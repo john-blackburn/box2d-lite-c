@@ -54,6 +54,7 @@ void initClipVertex(struct ClipVertex *cv)
     cv->fp.value=0;
 }
 
+// swap two chars provided
 void Swap(char* a, char* b)
 {
 	char tmp = *a;
@@ -61,12 +62,14 @@ void Swap(char* a, char* b)
 	*b = tmp;
 }
 
+// flip a feature pair in situ
 void Flip(union FeaturePair *fp)
 {
 	Swap(&(fp->e.inEdge1), &(fp->e.inEdge2));
 	Swap(&(fp->e.outEdge1), &(fp->e.outEdge2));
 }
 
+// set vOut. Return number of output points (0, 1 or 2)
 int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 					  struct Vec2 normal, float offset, char clipEdge)
 {
@@ -105,6 +108,7 @@ int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 	return numOut;
 }
 
+// set c
 static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Vec2 pos,
 								struct Mat22 Rot, struct Vec2 normal)
 {
@@ -175,6 +179,7 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 }
 
 // The normal points from A to B
+// Set the contacts provided based on supplied bodies. return number of contacts (might be zero)
 int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 {
 	// Setup

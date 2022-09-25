@@ -30,12 +30,14 @@ int main()
     struct Vec2 pos;
     pos.x=0;
     pos.y=-0.5f * size.y;
-    
+
+    // Set up the ground object and add to list. Mass if FLT_MAX so static
     initBody(&ground, size, FLT_MAX);
     ground.position = pos;
     
     addBody(&ground);
-    
+
+    // Set up a crate. Mass 200 kg, dynamic   
     struct Body crate;
 
     size.x=1.0f;
@@ -56,4 +58,6 @@ int main()
         Step(timeStep);
         printf("%f %f\n", crate.position.x, crate.position.y);
     }
+
+    return 0;
 }

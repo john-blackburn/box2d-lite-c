@@ -13,8 +13,6 @@
 #ifndef MATHUTILS_H
 #define MATHUTILS_H
 
-//const float k_pi = 3.14159265358979323846264f;
-
 struct Vec2
 {
 	float x, y;

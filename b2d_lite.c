@@ -9,6 +9,8 @@
 * It is provided "as is" without express or implied warranty.
 */
 
+// Converted to C by John Blackburn
+
 #include <stdio.h>
 #include <float.h>
 #include <math.h>
@@ -40,16 +42,19 @@ struct ArbiterKey
 struct Body *g_bodies[100];
 int g_numBodies;
 
+// This is basically a map of arbiters. Key is ArbiterKey (the pair of body pointers) and value is an Arbiter Struct
 struct Arbiter g_arbiters[100];
 struct ArbiterKey g_arbiterKeys[100];
 int g_numArbiters;
 
-struct Vec2 gravity;
-int iterations;
-int accumulateImpulses = 1;
+// global settings
+struct Vec2 gravity;            // Eg set to (0, -9.81) m/s^2
+int iterations;                 // No. of times to apply impulses
+int accumulateImpulses = 1;     // options for calculations
 int warmStarting = 1;
 int positionCorrection = 1;
 
+// Find an Arbiter based on its key. Return pointer to it or NULL
 struct Arbiter* findArbiter(struct ArbiterKey key)
 {
     for (int i=0; i<g_numArbiters; i++)
@@ -62,6 +67,7 @@ struct Arbiter* findArbiter(struct ArbiterKey key)
     return NULL;
 }
 
+// Insert a new Arbiter into the list which is a simple array
 void insertArbiter(struct ArbiterKey key, struct Arbiter value)
 {
     if (g_numArbiters >= 100)    
@@ -75,6 +81,8 @@ void insertArbiter(struct ArbiterKey key, struct Arbiter value)
     g_numArbiters++;
 }
 
+// Erase Arbiter with specified key. Shuffle down the list
+// If no such arbiter do nothing
 void eraseArbiter(struct ArbiterKey key)
 {
     for (int i=0; i < g_numArbiters; i++)
@@ -92,6 +100,7 @@ void eraseArbiter(struct ArbiterKey key)
     }                                        
 }
 
+// Set the contact to zero
 void initContact(struct Contact *c)
 {
     c->Pn=0.0f;
@@ -99,6 +108,7 @@ void initContact(struct Contact *c)
     c->Pnb=0.0f;
 }
 
+// Update the Arbiter a's contacts based on its current contacts and supplied newContacts (merge them together)
 void UpdateArbiter(struct Arbiter *a, struct Contact* newContacts, int numNewContacts)
 {
 	struct Contact mergedContacts[2];
@@ -149,7 +159,9 @@ void UpdateArbiter(struct Arbiter *a, struct Contact* newContacts, int numNewCon
 	a->numContacts = numNewContacts;
 }
 
-
+// Loop over each pair of bodies and create a new Arbiter for that pair
+// If the bodies are not in contact remove the arbiter (if it's in the list: bodies have separated)
+// If they are in contact add the arbiter to the list (new contact). Or update Arbiter if already in list
 void BroadPhase()
 {
     for (int i=0; i< g_numBodies; i++)
@@ -184,9 +196,11 @@ void BroadPhase()
             initContact(&newArb.contacts[0]);
             initContact(&newArb.contacts[1]);
             
+            // Set the contacts for the new Arbiter (if any) and return number of contacts (might be zero)
             newArb.numContacts = Collide(newArb.contacts, newArb.body1, newArb.body2);  
             newArb.friction = sqrtf(newArb.body1->friction * newArb.body2->friction);
-            
+
+            // If contact found either insert or update the arbiter. If no contact remove the arbiter (if already present)
             if (newArb.numContacts > 0)
             {
                 struct Arbiter *a = findArbiter(key);
@@ -207,6 +221,8 @@ void BroadPhase()
     }      
 }
 
+// Update the normal mass, tangent mass, and bias of each contact for the given Arbiter
+// If accumulateImpulses, Update (angular) velocity of bodies belonging to the given arbiter a based on contacts within the Arbiter
 void PreStep(struct Arbiter *a, float inv_dt)
 {
 	const float k_allowedPenetration = 0.01f;
@@ -249,6 +265,8 @@ void PreStep(struct Arbiter *a, float inv_dt)
 	}
 }
 
+// Update (angular) velocity of bodies belonging to the given arbiter a
+// Based on contacts within the Arbiter. Also update contact's r1 and r2
 void ApplyImpulse(struct Arbiter *a)
 {
 	struct Body* b1 = a->body1;
@@ -325,14 +343,16 @@ void ApplyImpulse(struct Arbiter *a)
 	}
 }
 
+// Step all Bodies forward. Update (angular) velocities and positions
 void Step(float dt)
 {
 	float inv_dt = dt > 0.0f ? 1.0f / dt : 0.0f;
 
 	// Determine overlapping bodies and update contact points.
+    // Maintain Arbiter list
 	BroadPhase();
 
-	// Integrate forces.
+	// Integrate forces. These are external forces and torques which might be zero
 	for (int i = 0; i < g_numBodies; ++i)
 	{
 		struct Body* b = g_bodies[i];
@@ -344,14 +364,14 @@ void Step(float dt)
 		b->angularVelocity += dt * b->invI * b->torque;
 	}
 
-	// Perform pre-steps.
-    
+	// Perform pre-steps. Update contacts for each arbiter
     for (int i=0; i < g_numArbiters; i++)
     {
         PreStep(&g_arbiters[i], inv_dt);
     }
 
-	// Perform iterations
+	// Perform iterations. Update (angular) velocities based on contacts
+    // Do this "iterations" times until converge
 	for (int it = 0; it < iterations; ++it)
 	{
         for (int i=0; i < g_numArbiters; i++)
@@ -372,6 +392,7 @@ void Step(float dt)
 	}
 }
 
+// Initialise a Body to zero. Set its moment of inertia (I)
 void initBody(struct Body* b, struct Vec2 w, float m)
 {
         
@@ -403,12 +424,14 @@ void initBody(struct Body* b, struct Vec2 w, float m)
 	}
 }    
 
+// Add a Body to the list
 void addBody(struct Body *b)
 {
     g_bodies[g_numBodies]=b;
     g_numBodies++;
 }
 
+// Return pointer to Body index i
 struct Body* getBody(int i)
 {
     return g_bodies[i];

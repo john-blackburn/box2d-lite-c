@@ -11,10 +11,10 @@
 
 #define ID_TIMER   1
 
-int width = 256*3;
-int height = 192*3;
-float zoom = 10.0f;
-float pan_y =8.0f;
+int width = 256*3;      // width of the window in px
+int height = 192*3;     // height of the window in px
+float zoom = 10.0f;     // if pan_y=0, coord system goes from y=[-zoom,+zoom] (metres) and corresponding for x given aspect ratio
+float pan_y =8.0f;      // pan_y shifts up and down. eg pan_y=zoom means y=0 is at bottom of screen. pan_y=0, y=0 at centre
 
 struct Body ground, crate, crates[30];
 
@@ -114,8 +114,8 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
         gravity.y=-10.0f;
         
         struct Vec2 size;
-        size.x=100.f;
-        size.y=20.0f;
+        size.x=20.f;            // ground is 20m x 2m
+        size.y=2.0f;
         
         struct Vec2 pos;
         pos.x=0;
@@ -126,7 +126,7 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
         
         addBody(&ground);
 
-        size.x=1.0f;
+        size.x=1.0f;        // each crate is a 1m x 1m square
         size.y=1.0f;
 
         for (int i = 0; i < 15; ++i)
@@ -142,15 +142,6 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
             addBody(&crates[i]);
         }
         
-/*
-        pos.x=0.0f;
-        pos.y=4.0f;
-
-        initBody(&crate, size, 200.0f);
-        crate.position = pos;
-
-        addBody(&crate);
-*/
         GetClientRect(hwnd,&clientRect);
         GetWindowRect(hwnd,&winRect);
 
@@ -240,7 +231,7 @@ int WINAPI WinMain (HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		       NULL) ;		             // creation parameters
 
 
-  SetTimer(hwnd, ID_TIMER, 0, NULL);  // 10ms=100 times per second (in reality slower)
+  SetTimer(hwnd, ID_TIMER, 0, NULL);  // 0 means run as fast as possible, in practice 60 fps
 
   // ----------------------------------------------------------------------
   // Create window
