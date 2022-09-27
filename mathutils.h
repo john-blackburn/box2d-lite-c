@@ -35,7 +35,6 @@ struct Vec2 scaledVec2(float s, struct Vec2 v);
 struct Vec2 minusVec2(struct Vec2 v);
 struct Vec2 sumVec2(struct Vec2 a, struct Vec2 b);
 struct Vec2 diffVec2(struct Vec2 a, struct Vec2 b);
-float lengthVec2(struct Vec2 vec);
 
 float Dot(struct Vec2 a, struct Vec2 b);
 
@@ -43,11 +42,9 @@ float Crossvv(struct Vec2 a, struct Vec2 b);
 struct Vec2 Crossvs(struct Vec2 a, float s);
 struct Vec2 Crosssv(float s, struct Vec2 a);
 
-float Abss(float a);
 struct Vec2 Absv(struct Vec2 a);
 struct Mat22 AbsM(struct Mat22 A);
 
-float Sign(float x);
 float Min(float a, float b);
 float Max(float a, float b);
 float Clamp(float a, float low, float high);

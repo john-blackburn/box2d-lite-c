@@ -122,7 +122,8 @@ void UpdateArbiter(struct Arbiter *a, struct Contact* newContacts, int numNewCon
 		for (int j = 0; j < a->numContacts; ++j)
 		{
 			struct Contact* cOld = a->contacts + j;
-			if (cNew->feature.value == cOld->feature.value)
+			if (cNew->feature.inEdge1 == cOld->feature.inEdge1 && cNew->feature.outEdge1 == cOld->feature.outEdge1 &&
+                cNew->feature.inEdge2 == cOld->feature.inEdge2 && cNew->feature.outEdge2 == cOld->feature.outEdge2)
 			{
 				k = j;
 				break;

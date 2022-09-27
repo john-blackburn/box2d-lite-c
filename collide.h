@@ -15,16 +15,12 @@
 
 #include "mathutils.h"
 
-union FeaturePair
+struct Edges
 {
-	struct Edges
-	{
-		char inEdge1;
-		char outEdge1;
-		char inEdge2;
-		char outEdge2;
-	} e;
-	int value;
+    char inEdge1;
+    char outEdge1;
+    char inEdge2;
+    char outEdge2;
 };
 
 struct Contact
@@ -38,7 +34,7 @@ struct Contact
 	float Pnb;	// accumulated normal impulse for position bias
 	float massNormal, massTangent;
 	float bias;
-	union FeaturePair feature;
+	struct Edges feature;
 };
 
 struct Body

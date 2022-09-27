@@ -46,12 +46,15 @@ struct ClipVertex
 {
 //	ClipVertex() { fp.value = 0; }
 	struct Vec2 v;
-	union FeaturePair fp;
+	struct Edges fp;
 };
 
 void initClipVertex(struct ClipVertex *cv)
 {
-    cv->fp.value=0;
+    cv->fp.inEdge1 = 0;
+    cv->fp.outEdge1 = 0;
+    cv->fp.inEdge2 = 0;
+    cv->fp.outEdge2 = 0;
 }
 
 // swap two chars provided
@@ -63,10 +66,10 @@ void Swap(char* a, char* b)
 }
 
 // flip a feature pair in situ
-void Flip(union FeaturePair *fp)
+void Flip(struct Edges *fp)
 {
-	Swap(&(fp->e.inEdge1), &(fp->e.inEdge2));
-	Swap(&(fp->e.outEdge1), &(fp->e.outEdge2));
+	Swap(&(fp->inEdge1), &(fp->inEdge2));
+	Swap(&(fp->outEdge1), &(fp->outEdge2));
 }
 
 // set vOut. Return number of output points (0, 1 or 2)
@@ -93,14 +96,14 @@ int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 		if (distance0 > 0.0f)
 		{
 			vOut[numOut].fp = vIn[0].fp;
-			vOut[numOut].fp.e.inEdge1 = clipEdge;
-			vOut[numOut].fp.e.inEdge2 = NO_EDGE;
+			vOut[numOut].fp.inEdge1 = clipEdge;
+			vOut[numOut].fp.inEdge2 = NO_EDGE;
 		}
 		else
 		{
 			vOut[numOut].fp = vIn[1].fp;
-			vOut[numOut].fp.e.outEdge1 = clipEdge;
-			vOut[numOut].fp.e.outEdge2 = NO_EDGE;
+			vOut[numOut].fp.outEdge1 = clipEdge;
+			vOut[numOut].fp.outEdge2 = NO_EDGE;
 		}
 		++numOut;
 	}
@@ -120,57 +123,57 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 
 	if (nAbs.x > nAbs.y)
 	{
-		if (Sign(n.x) > 0.0f)
+		if (n.x > 0.0f)
 		{
 
 			c[0].v.x = h.x;
 			c[0].v.y = -h.y;
-			c[0].fp.e.inEdge2 = EDGE3;
-			c[0].fp.e.outEdge2 = EDGE4;
+			c[0].fp.inEdge2 = EDGE3;
+			c[0].fp.outEdge2 = EDGE4;
 
 			c[1].v.x = h.x;
 			c[1].v.y =h.y;
-			c[1].fp.e.inEdge2 = EDGE4;
-			c[1].fp.e.outEdge2 = EDGE1;
+			c[1].fp.inEdge2 = EDGE4;
+			c[1].fp.outEdge2 = EDGE1;
 		}
 		else
 		{
 			c[0].v.x = -h.x;
             c[0].v.y = h.y;
-			c[0].fp.e.inEdge2 = EDGE1;
-			c[0].fp.e.outEdge2 = EDGE2;
+			c[0].fp.inEdge2 = EDGE1;
+			c[0].fp.outEdge2 = EDGE2;
 
 			c[1].v.x = -h.x;
 			c[1].v.y = -h.y;
-			c[1].fp.e.inEdge2 = EDGE2;
-			c[1].fp.e.outEdge2 = EDGE3;
+			c[1].fp.inEdge2 = EDGE2;
+			c[1].fp.outEdge2 = EDGE3;
 		}
 	}
 	else
 	{
-		if (Sign(n.y) > 0.0f)
+		if (n.y > 0.0f)
 		{
 			c[0].v.x = h.x;
 			c[0].v.y = h.y;
-			c[0].fp.e.inEdge2 = EDGE4;
-			c[0].fp.e.outEdge2 = EDGE1;
+			c[0].fp.inEdge2 = EDGE4;
+			c[0].fp.outEdge2 = EDGE1;
 
 			c[1].v.x = -h.x;
 			c[1].v.y = h.y;
-			c[1].fp.e.inEdge2 = EDGE1;
-			c[1].fp.e.outEdge2 = EDGE2;
+			c[1].fp.inEdge2 = EDGE1;
+			c[1].fp.outEdge2 = EDGE2;
 		}
 		else
 		{
 			c[0].v.x = -h.x;
 			c[0].v.y = -h.y;
-			c[0].fp.e.inEdge2 = EDGE2;
-			c[0].fp.e.outEdge2 = EDGE3;
+			c[0].fp.inEdge2 = EDGE2;
+			c[0].fp.outEdge2 = EDGE3;
 
 			c[1].v.x = h.x;
 			c[1].v.y = -h.y;
-			c[1].fp.e.inEdge2 = EDGE3;
-			c[1].fp.e.outEdge2 = EDGE4;
+			c[1].fp.inEdge2 = EDGE3;
+			c[1].fp.outEdge2 = EDGE4;
 		}
 	}
 

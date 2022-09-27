@@ -126,12 +126,6 @@ struct Vec2 diffVec2(struct Vec2 a, struct Vec2 b)
 	return res;
 }
 
-// return length of vec
-float lengthVec2(struct Vec2 vec)
-{
-    return sqrtf(vec.x * vec.x + vec.y * vec.y);
-}
-
 // return dot product of two vecs
 float Dot(struct Vec2 a, struct Vec2 b)
 {
@@ -162,12 +156,6 @@ struct Vec2 Crosssv(float s, struct Vec2 a)
 	return res;
 }
 
-// Return absolute value of scalar
-float Abss(float a)
-{
-	return a > 0.0f ? a : -a;
-}
-
 // abs of vector
 struct Vec2 Absv(struct Vec2 a)
 {
@@ -184,13 +172,6 @@ struct Mat22 AbsM(struct Mat22 A)
 	res.col1 = Absv(A.col1), 
     res.col2 = Absv(A.col2);
     return res;
-}
-
-
-// return +1 if x>0 else -1
-float Sign(float x)
-{
-	return x < 0.0f ? -1.0f : 1.0f;
 }
 
 // min of two scalars
