@@ -37,6 +37,7 @@ struct Mat22 Transpose(struct Mat22 mat)
 }
 
 // Initialise matrix to rotation matrix based on angle
+// z80: HL = mat
 void initMat22(struct Mat22 *mat, float angle)
 {
     
@@ -66,6 +67,7 @@ struct Mat22 matmulMM(struct Mat22 A, struct Mat22 B)
 }
 
 // Add to vec in situ
+// z80: vec = IX, other by value
 void addtoVec2(struct Vec2 *vec, struct Vec2 other)
 {
     vec->x += other.x;
@@ -73,6 +75,7 @@ void addtoVec2(struct Vec2 *vec, struct Vec2 other)
 }
 
 // subtract from vec in situ
+// z80: vec = IX, other by value
 void subfromVec2(struct Vec2 *vec, struct Vec2 other)
 {
     vec->x -= other.x;
@@ -80,6 +83,7 @@ void subfromVec2(struct Vec2 *vec, struct Vec2 other)
 }
 
 // scale vec in situ
+// IX = vec
 void scaleVec2(struct Vec2 *vec, float a)
 {
     vec->x *= a;

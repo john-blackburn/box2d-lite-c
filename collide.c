@@ -49,6 +49,7 @@ struct ClipVertex
 	struct Edges fp;
 };
 
+// z80: IX=CV
 void initClipVertex(struct ClipVertex *cv)
 {
     cv->fp.inEdge1 = 0;
@@ -58,6 +59,7 @@ void initClipVertex(struct ClipVertex *cv)
 }
 
 // swap two chars provided
+// Z80: IX=a, IY=b
 void Swap(char* a, char* b)
 {
 	char tmp = *a;
@@ -66,6 +68,7 @@ void Swap(char* a, char* b)
 }
 
 // flip a feature pair in situ
+// Z80: IX=fp
 void Flip(struct Edges *fp)
 {
 	Swap(&(fp->inEdge1), &(fp->inEdge2));
@@ -73,6 +76,7 @@ void Flip(struct Edges *fp)
 }
 
 // set vOut. Return number of output points (0, 1 or 2)
+// z80: IX=vOut, IY=vIn
 int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 					  struct Vec2 normal, float offset, char clipEdge)
 {
@@ -112,6 +116,7 @@ int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 }
 
 // set c
+// Z80: IX = c
 static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Vec2 pos,
 								struct Mat22 Rot, struct Vec2 normal)
 {
@@ -183,6 +188,7 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 
 // The normal points from A to B
 // Set the contacts provided based on supplied bodies. return number of contacts (might be zero)
+// in z80 contacts = HL, bodyA = IX, bodyB = IY
 int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 {
 	// Setup
