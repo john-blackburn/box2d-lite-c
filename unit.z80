@@ -1,0 +1,176 @@
+org 32768
+
+jp vectest
+
+; ----------------------------------------------------------------
+; Unit test 1. 
+; (12*53-147)*0.5= 244.5
+; print answer to screen using "me"
+; ----------------------------------------------------------------
+
+reslt: ds 3  ; string to store the result
+
+stt:
+  ld a,12
+
+  call u8tof24 ; result on AHL
+
+  push af
+  push hl
+
+  ld a,53
+  call u8tof24 ; result on AHL
+
+  pop de
+  pop bc; b=a. need c=a
+  ld c,b
+
+  call f24mul ;  AHL * CDE
+
+  push af
+  push hl
+
+  ld a,147
+  call u8tof24; AHL
+
+  ld c,a
+  ld d,h
+  ld e,l
+
+  pop hl
+  pop af
+
+  call f24sub
+
+  ld c,00111110b  ; 0 0111110 0000000000000000(0.5)
+  ld d,0
+  ld e,0
+ 
+  call f24mul
+
+  call f24tou8; convert to int and store in A
+
+  ld hl,reslt
+  call u8toa      ; result stored in "reslt" string
+
+  ld ix,reslt     ; string to print
+  ld hl,0         ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,3          ; no. chars to print
+
+  call me         ; should print 244
+
+  ld bc,0         ; return 0 to BASIC
+
+  ret
+
+writeAHL_pp: dw 0
+writeAHL:
+
+  push ix
+  push hl
+
+  ld hl,reslt
+  call u8toa
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp) ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,3          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+
+  pop hl
+
+  push hl
+
+  ld a,h  
+  ld hl,reslt
+  call u8toa
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp)         ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,3          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+
+  pop hl
+
+  ld a,l  
+  ld hl,reslt
+  call u8toa
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp)         ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,3          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+    
+  pop ix
+  
+  ret
+
+; ----------------------------------------------------------------
+; Unit test 2
+; Test addtoVec2. Pass in vector1 and vector2, sum is in vector1
+; result should be (2.0, 4.0) which is shown as
+; 064 000 000 065 000 000
+; ----------------------------------------------------------------
+
+vector1: db 00111111b, 0, 0,   01000000b, 0, 0 ; (1.0, 2.0)
+vector2: db 00111111b, 0, 0,   01000000b, 0, 0 ; (1.0, 2.0)
+
+vectest:
+  push iy
+  ld ix,vector1
+
+  ld hl,vector2
+  ld de,addtoVec2_other
+  ld bc,6
+  ldir
+
+  call addtoVec2 ; result in vec1
+
+  ld a,(ix+0)  ; x
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+
+;  call f24tou8
+
+;  ld hl,reslt
+;  call u8toa
+
+;  ld ix,reslt     ; text to print
+;  ld hl,0         ; print pos from top-left
+;  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+;  ld b,3          ; chars to print
+;  call me
+
+  ld ix,vector1
+
+  ld a,(ix+3)  ; y
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  call writeAHL
+
+;  call f24tou8
+
+;  ld hl,reslt
+;  call u8toa
+
+;  ld ix,reslt
+;  ld hl,10
+;  ld a,00111001b
+;  ld b,3
+;  call me
+
+  pop iy
+
+  ret
+
+include "b2d.z80"

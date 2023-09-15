@@ -1,0 +1,4573 @@
+; ----------------------------------------------------------------
+; Calling convention. Callee must preserve IX, IY (except for "me")
+; callee may clobber AF, BC, DE, HL (caller preserved)
+; args (and return value) are passed in as static variables eg ClipSegmentToLine_offset
+; or Transpose_mat (which is a Mat22 struct passed by value so we can't use a register)
+; exception is pointers which are often passed in as IX, IY, HL
+; local variables are static variables (labels). 
+; We don't use the stack to pass in args or store local variables (no stackframe)
+;
+; NB: for ZX Spin don't put code in first column or it might be mistaken for a label!
+; Note the use of $+x or $-x in relative jumps within f24, not what you might think!
+; ----------------------------------------------------------------
+
+; ----------------------------------------------------------------
+; Defines structs and enums
+; ----------------------------------------------------------------
+
+; struct Vec2
+Vec2 equ 6
+Vec2_x equ 0
+Vec2_y equ 3
+
+; struct Mat22
+Mat22 equ 12
+Mat22_col1 equ 0
+Mat22_col2 equ 6
+
+; struct Edges
+Edges equ 4
+Edges_inEdge1 equ 0
+Edges_outEdge1 equ 1
+Edges_inEdge2 equ 2
+Edges_outEdge2 equ 3
+
+; struct ClipVertex
+ClipVertex equ 10
+ClipVertex_v equ 0   ; Vec2
+ClipVertex_fp equ 6  ; Edges
+
+; enum Axis
+FACE_A_X equ 0
+FACE_A_Y equ 1
+FACE_B_X equ 2
+FACE_B_Y equ 3
+
+; enum EdgeNumbers
+NO_EDGE equ 0
+EDGE1 equ 1
+EDGE2 equ 2
+EDGE3 equ 3
+EDGE4 equ 4
+
+; struct Body (3 bytes=float, 6=Vec2)
+Body equ 48
+Body_position equ 0 ; 6
+Body_rotation equ 6 ; 3
+Body_velocity equ 9 ; 6
+Body_angularVelocity equ 15 ; 3
+Body_force equ 18 ; 6
+Body_torque equ 24 ; 3
+Body_width equ 27 ; 6
+Body_friction equ 33 ; 3
+Body_mass equ 36 ; 3
+Body_invMass equ 39 ;3
+Body_I equ 42 ;3
+Body_invI equ 45 ;3
+
+; struct Contact
+Contact equ 49
+Contact_position equ 0 ;6
+Contact_normal equ 6 ; 6
+Contact_r1 equ 12 ; 6
+Contact_r2 equ 18 ; 6
+Contact_separation equ 24 ; 3
+Contact_Pn equ 27 ; 3
+Contact_Pt equ 30 ; 3
+Contact_Pnb equ 33 ; 3
+Contact_massNormal equ 36 ; 3
+Contact_massTangent equ 39 ; 3
+Contact_bias equ 42 ; 3
+Contact_feature equ 45 ; 4 (Edges)
+
+; ----------------------------------------------------------------
+; void addtoVec2(struct Vec2 *vec, struct Vec2 other)
+; vec is passed in by ix, other by value
+; ----------------------------------------------------------------
+
+addtoVec2_other: ds Vec2
+addtoVec2:
+  
+  ld hl,addtoVec2_other
+  ld c,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+  ld e,(hl)
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24add
+
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld hl,addtoVec2_other+3
+  ld c,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+  ld e,(hl)
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  call f24add
+
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  ret
+
+; ----------------------------------------------------------------
+; void subfromVec2(struct Vec2 *vec, struct Vec2 other)
+; vec is passed in by ix, other by value
+; ----------------------------------------------------------------
+
+subfromVec2_other: ds Vec2
+subfromVec2:
+  
+  ld hl,subfromVec2_other
+  ld c,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+  ld e,(hl)
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24sub
+
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld hl,subfromVec2_other+3
+  ld c,(hl)
+  inc hl
+  ld d,(hl)
+  inc hl
+  ld e,(hl)
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  call f24sub
+
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  ret    
+
+; ----------------------------------------------------------------
+; struct Vec2 minusVec2(struct Vec2 v)
+; ----------------------------------------------------------------
+
+minusVec2_v: ds Vec2
+minusVec2_res: ds Vec2
+minusVec2:
+  push ix
+  push iy
+
+  ld ix,minusVec2_v
+  ld iy,minusVec2_res
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24neg
+
+  ld (iy+0),a
+  ld (iy+1),h
+  ld (iy+2),l
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  call f24neg
+
+  ld (iy+3),a
+  ld (iy+4),h
+  ld (iy+5),l
+  
+  pop iy
+  pop ix
+  ret  
+
+; ----------------------------------------------------------------
+; void scaleVec2(struct Vec2 *vec, float a);
+; IX = vec
+; ----------------------------------------------------------------
+
+scaleVec2_a: ds 3
+scaleVec2:
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld iy,scaleVec2_a
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24mul  ; destroys CDE
+
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24mul
+
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  ret
+
+; ----------------------------------------------------------------
+; struct Vec2 scaledVec2(float s, struct Vec2 v);
+; ----------------------------------------------------------------
+
+scaledVec2_s: ds 3
+scaledVec2_v: ds Vec2
+scaledVec2_res: ds Vec2
+scaledVec2:
+
+  push ix
+  push iy
+  
+  ld ix,scaledVec2_s
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld iy,scaledVec2_v
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24mul
+
+  push ix
+  ld ix,scaledVec2_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l   
+  pop ix
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(iy+3)
+  ld d,(iy+4)
+  ld e,(iy+5)
+
+  call f24mul
+
+  ld ix,scaledVec2_res
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  
+  pop iy
+  pop ix
+  ret
+   
+; ----------------------------------------------------------------
+; struct Vec2 sumVec2(struct Vec2 a, struct Vec2 b);
+; ----------------------------------------------------------------
+
+sumVec2_a: ds Vec2
+sumVec2_b: ds Vec2
+sumVec2_res: ds Vec2
+sumVec2:
+
+  push ix
+  push iy
+
+  ld ix,sumVec2_a
+  ld iy,sumVec2_b
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24add
+
+  push ix
+  ld ix,sumVec2_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  ld c,(iy+3)
+  ld d,(iy+4)
+  ld e,(iy+5)
+
+  ld ix,sumVec2_res
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  
+  pop iy
+  pop ix
+
+  ret
+
+; ----------------------------------------------------------------
+; struct Vec2 diffVec2(struct Vec2 a, struct Vec2 b);
+; ----------------------------------------------------------------
+
+diffVec2_a: ds Vec2
+diffVec2_b: ds Vec2
+diffVec2_res: ds Vec2
+diffVec2:
+
+  push ix
+  push iy
+  
+  ld ix,diffVec2_a
+  ld iy,diffVec2_b
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24add
+
+  push ix
+  ld ix,diffVec2_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  ld c,(iy+3)
+  ld d,(iy+4)
+  ld e,(iy+5)
+
+  ld ix,diffVec2_res
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+  
+  pop iy
+  pop ix
+
+  ret
+
+; ----------------------------------------------------------------
+; struct Mat22 Transpose(struct Mat22 mat);
+; ----------------------------------------------------------------
+
+Transpose_mat: ds Mat22
+Transpose_v1: ds Vec2
+Transpose_v2: ds Vec2
+Transpose_res: ds Mat22
+
+Transpose:
+  ld hl,Transpose_mat
+  ld de,Transpose_v1
+  ld bc,3
+  ldir
+
+  ld hl,Transpose_mat+6
+  ld de,Transpose_v1+3
+  ld bc,3
+  ldir
+
+  ld hl,Transpose_mat+3
+  ld de,Transpose_v2
+  ld bc,3
+  ldir
+
+  ld hl,Transpose_mat+9
+  ld de,Transpose_v2+3
+  ld bc,3
+  ldir
+    
+  ld hl,Transpose_v1
+  ld de,Transpose_res
+  ld bc,6
+  ldir
+
+  ld hl,Transpose_v2
+  ld de,Transpose_res+6
+  ld bc,6
+  ldir
+
+  ret
+
+; ----------------------------------------------------------------
+; void initMat22(struct Mat22 *mat, float angle);
+; HL = mat
+; ----------------------------------------------------------------
+
+; mat pointer in HL
+initMat22_angle: ds 3
+initMat22_c: ds 3
+initMat22_s: ds 3
+initMat22_ns: ds 3
+initMat22:
+
+   push ix ; preserve
+   push hl; store pointer
+
+   ld ix,initMat22_angle
+   ld a,(ix+0) ; move angle to AHL
+   ld h,(ix+1)
+   ld l,(ix+2)
+
+   push af; preseve angle
+   push hl
+   call f24cos
+
+   ld ix,initMat22_c; store cos(angle)
+   ld (ix+0),a
+   ld (ix+1),h
+   ld (ix+2),l
+
+   pop hl; recover angle
+   pop af
+
+   call f24sin
+
+   ld ix,initMat22_s; store sin(angle)
+   ld (ix+0),a
+   ld (ix+1),h
+   ld (ix+2),l
+
+   call f24neg
+
+   ld ix,initMat22_ns; store -sin(angle)
+   ld (ix+0),a
+   ld (ix+1),h
+   ld (ix+2),l
+
+   pop de; pointer to mat
+
+   push de
+   ld hl,initMat22_c
+   ld bc,3
+   ldir
+   pop de
+
+   push de
+   ex de,hl
+   ld de,6
+   add hl,de
+   ex de,hl
+   ld hl,initMat22_s
+   ld bc,3
+   ldir
+   pop de
+
+   push de
+   ex de,hl
+   ld de,3
+   add hl,de
+   ex de,hl
+   ld hl,initMat22_ns
+   ld bc,3
+   ldir
+   pop de
+
+   ex de,hl
+   ld de,6+3
+   add hl,de
+   ex de,hl
+   ld hl,initMat22_c
+   ld bc,3
+   ldir
+   
+   pop ix
+   ret   
+
+; ----------------------------------------------------------------
+; struct Vec2 matmul(struct Mat22 A, struct Vec2 v);
+; ----------------------------------------------------------------
+
+matmul_A: ds Mat22
+matmul_v: ds Vec2
+matmul_res: ds Vec2
+matmul:
+
+   push ix
+   
+   ld ix,matmul_A
+   ld a,(ix+0)
+   ld h,(ix+1)
+   ld l,(ix+2)
+
+   ld ix,matmul_v
+   ld c,(ix+0)
+   ld d,(ix+1)
+   ld e,(ix+2)
+
+   call f24mul
+
+   push af
+   push hl
+
+   ld ix,matmul_A+6
+   ld a,(ix+0)
+   ld h,(ix+1)
+   ld l,(ix+2)
+
+   ld ix,matmul_v+3
+   ld c,(ix+0)
+   ld d,(ix+1)
+   ld e,(ix+2)
+
+   call f24mul
+
+   pop de ; AHL -> CDE
+   pop bc
+   ld c,b
+
+   call f24add
+   ld ix,matmul_res
+   ld (ix+0),a
+   ld (ix+1),h
+   ld (ix+2),l
+
+   ld ix,matmul_A+3
+   ld a,(ix+0)
+   ld h,(ix+1)
+   ld l,(ix+2)
+
+   ld ix,matmul_v
+   ld c,(ix+0)
+   ld d,(ix+1)
+   ld e,(ix+2)
+
+   call f24mul
+
+   push af
+   push hl
+
+   ld ix,matmul_A+6+3
+   ld a,(ix+0)
+   ld h,(ix+1)
+   ld l,(ix+2)
+
+   ld ix,matmul_v+3
+   ld c,(ix+0)
+   ld d,(ix+1)
+   ld e,(ix+2)
+
+   call f24mul
+
+   pop de
+   pop bc
+   ld c,b
+
+   call f24add
+   ld ix,matmul_res
+   ld (ix+3),a
+   ld (ix+4),h
+   ld (ix+5),l
+   
+   pop ix
+   ret
+
+; ----------------------------------------------------------------
+; struct Mat22 matmulMM(struct Mat22 A, struct Mat22 B);
+; ----------------------------------------------------------------
+
+matmulMM_A: ds Mat22
+matmulMM_B: ds Mat22
+matmulMM_res: ds Mat22
+matmulMM:
+
+   ld hl,matmulMM_A
+   ld de,matmul_A
+   ld bc,2*2*3
+   ldir
+
+   ld hl,matmulMM_B
+   ld de,matmul_v
+   ld bc,2*3
+   ldir
+
+   call matmul
+
+   ld hl,matmul_res
+   ld de,matmulMM_res
+   ld bc,2*3
+   ldir
+
+   ld hl,matmulMM_B+6
+   ld de,matmul_v
+   ld bc,2*3
+   ldir   
+
+   call matmul
+
+   ld de,matmulMM_res+6
+   ld hl,matmul_v
+   ld bc,6
+   ldir
+
+   ret
+
+; ----------------------------------------------------------------
+; float Dot(struct Vec2 a, struct Vec2 b);
+; ----------------------------------------------------------------
+
+Dot_a: ds Vec2
+Dot_b: ds Vec2
+Dot_res: ds 3
+Dot:
+
+  push ix
+  push iy
+  
+  ld ix,Dot_a
+  ld iy,Dot_b
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24mul
+
+  push af
+  push hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  ld c,(iy+3)
+  ld d,(iy+4)
+  ld e,(iy+5)
+
+  call f24mul
+
+  pop de
+  pop bc
+
+  ld c,b
+
+  call f24add
+
+  ld ix,Dot_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  
+  pop iy
+  pop ix
+
+  ret
+
+; ------------------------------------------------------------------
+; struct Vec2 Absv(struct Vec2 a)
+; ------------------------------------------------------------------
+
+Absv_a: ds Vec2
+Absv_res: ds Vec2
+Absv:
+  ld hl,Absv_a
+  ld de,Absv_res
+  ld bc,6
+  ldir
+
+  ld a,(Absv_res)
+  and $7F
+  ld (Absv_res),a
+
+  ld a,(Absv_res+3)
+  and $7F
+  ld (Absv_res+3),a
+
+  ret
+  
+; ------------------------------------------------------------------
+; struct Mat22 AbsM(struct Mat22 A)
+; ------------------------------------------------------------------
+
+AbsM_A: ds Mat22
+AbsM_res: ds Mat22
+AbsM:
+  ld hl,AbsM_A
+  ld de,Absv_a
+  ld bc,Vec2
+  ldir
+  
+  call Absv
+  
+  ld hl,Absv_res
+  ld de,AbsM_res
+  ld bc,Vec2
+  ldir
+  
+  ld hl,AbsM_A+Mat22_col2
+  ld de,Absv_a
+  ld bc,Vec2
+  ldir
+  
+  call Absv
+  
+  ld hl,Absv_res
+  ld de,AbsM_res+Mat22_col2
+  ld bc,Vec2
+  ldir
+  
+  ret
+  
+; ----------------------------------------------------------------
+; float Crossvv(struct Vec2 a, struct Vec2 b)
+; return a.x * b.y - a.y * b.x;
+; ----------------------------------------------------------------
+
+Crossvv_a: ds Vec2
+Crossvv_b: ds Vec2
+Crossvv_res: ds 3
+Crossvv:
+
+  push ix
+  push iy
+  
+  ld ix,Crossvv_a
+  ld iy,Crossvv_b
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(iy+3)
+  ld d,(iy+4)
+  ld e,(iy+5)
+
+  call f24mul
+
+  push af
+  push hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  ld c,(iy+0)
+  ld d,(iy+1)
+  ld e,(iy+2)
+
+  call f24mul
+
+  ld c,a
+  ld d,h
+  ld e,l
+
+  pop hl
+  pop af
+
+  call f24sub
+
+  ld ix,Crossvv_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  
+  pop iy
+  pop ix
+
+  ret
+
+; ------------------------------------------------------------------
+; void initClipVertex(struct ClipVertex *cv)
+; ------------------------------------------------------------------
+
+initClipVertex:
+  ld (ix+6),0
+  ld (ix+7),0
+  ld (ix+8),0  
+  ld (ix+9),0
+  ret
+
+; ------------------------------------------------------------------
+; void Swap(char* a, char* b)
+; IX=a, IY=b
+; ------------------------------------------------------------------
+
+Swap:
+  ld a,(ix+0)
+  ld b,(iy+0)
+
+  ld (iy+0),a
+  ld (ix+0),b
+  ret
+
+; ------------------------------------------------------------------
+; void Flip(struct Edges *fp)
+; IX=fp
+; ------------------------------------------------------------------
+
+Flip:
+  push ix
+  push iy
+  
+  push ix
+  pop iy
+  inc iy
+  inc iy
+  
+;  ld iy,ix+2
+
+  call Swap
+
+  push ix
+  pop iy
+  
+  inc ix
+  inc iy
+  inc iy
+  inc iy
+
+;  ld ix,ix+1
+;  ld iy,ix+3
+
+  call Swap
+  
+  pop iy
+  pop ix
+  ret
+
+; ------------------------------------------------------------------
+; HL=base of array, A=index, DE=size of items in array in bytes
+; Advance HL
+; ------------------------------------------------------------------
+
+arrayIndex:
+
+  cp 0
+  ret z
+
+  ld b,a
+
+arrayIndex_loop:
+  add hl,de
+  djnz arrayIndex_loop  
+
+  ret
+
+; ------------------------------------------------------------------
+; int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
+;                       struct Vec2 normal, float offset, char clipEdge)
+; ix points to vOut, iy points to vIn
+; ------------------------------------------------------------------
+
+ClipSegmentToLine_normal: ds Vec2
+ClipSegmentToLine_offset: ds 3
+ClipSegmentToLine_clipEdge: ds 1
+
+ClipSegmentToLine_distance0: ds 3
+ClipSegmentToLine_distance1: ds 3
+ClipSegmentToLine_interp: ds 3
+ClipSegmentToLine:
+  ld a,0 ; numOut
+  push af
+
+  ; float distance0 = Dot(normal, vIn[0].v) - offset
+  ; if (distance0 <= 0.0f) vOut[numOut++] = vIn[0]
+
+  ld hl,ClipSegmentToLine_normal
+  ld de,Dot_a
+  ld bc,Vec2
+  ldir
+
+  push iy
+  pop hl
+  ld de,Dot_b
+  ld bc,Vec2
+  ldir
+
+  call Dot
+
+  push ix
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)  
+  ld l,(ix+2)
+
+  ld ix,ClipSegmentToLine_offset
+
+  ld c,(ix+0)
+  ld d,(ix+1)  
+  ld e,(ix+2)
+
+  call f24sub
+
+  ld ix,ClipSegmentToLine_distance0
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  pop ix
+
+;	if (distance0 <= 0.0f) vOut[numOut++] = vIn[0]
+
+  ld c,0; 0.0f
+  ld d,0
+  ld e,0
+
+  call f24cmp
+
+  jr z,ClipSegmentToLine2; jump if distance0 > 0.0f
+  jr nc,ClipSegmentToLine1
+ClipSegmentToLine2:
+
+  pop af
+  
+  push ix
+  pop hl ; vOut[numOut++] = vIn[0];
+
+  ld de,ClipVertex  
+  call arrayIndex ; hl = vOut[numOut]
+
+  ex de,hl 
+  push ix
+  pop hl
+  ld bc,ClipVertex
+  ldir  
+  inc a ; numOut++
+
+  push af
+
+ClipSegmentToLine1:
+
+  ; float distance1 = Dot(normal, vIn[1].v) - offset
+  ; if (distance1 <= 0.0f) vOut[numOut++] = vIn[1]
+
+;  ld hl,ClipSegmentToLine_normal
+;  ld de,Dot_a
+;  ld bc,Vec2
+;  ldir
+
+; Dot_a is still in place
+
+  push iy
+  pop hl
+  ld bc,ClipVertex
+  add hl,bc
+  ld de,Dot_b
+  ld bc,Vec2
+  ldir
+
+  call Dot
+
+  push ix
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)  
+  ld l,(ix+2)
+
+  ld ix,ClipSegmentToLine_offset
+  ld c,(ix+0)
+  ld d,(ix+1)  
+  ld e,(ix+2)
+
+  call f24sub
+
+  ld ix,ClipSegmentToLine_distance1
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  pop ix
+
+;	if (distance1 <= 0.0f) vOut[numOut++] = vIn[1]
+
+  ld c,0; 0.0f
+  ld d,0
+  ld e,0
+
+  call f24cmp
+
+  jr z,ClipSegmentToLine3; jump if distance0 > 0.0f
+  jr nc,ClipSegmentToLine4
+ClipSegmentToLine3:
+
+  pop af
+  
+  push ix
+  pop hl ; vOut[numOut++] = vIn[1];
+
+  ld de,ClipVertex  
+  call arrayIndex ; hl = vOut[numOut]
+
+  ex de,hl 
+  push iy
+  pop hl
+  ld bc,ClipVertex
+  add hl,bc
+  ldir  
+  inc a ; numOut++
+
+  push af
+
+ClipSegmentToLine4:
+
+; if (distance0 * distance1 < 0.0f)
+
+  push ix
+  ld ix,ClipSegmentToLine_distance0
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  ld ix,ClipSegmentToLine_distance1
+  ld c,(ix+3)
+  ld d,(ix+4)
+  ld e,(ix+5)
+  pop ix
+  
+  call f24mul
+  
+  ld c,0
+  ld d,0
+  ld e,0
+  
+  call f24cmp
+  
+  jp nc, ClipSegmentToLine5; jump if AHL >= 0  
+
+  push ix
+  ld ix,ClipSegmentToLine_distance0
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,ClipSegmentToLine_distance1
+
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24sub
+    
+  ld c,a
+  ld d,h
+  ld e,l
+  
+  ld ix,ClipSegmentToLine_distance0
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24div
+
+  ld ix,ClipSegmentToLine_interp
+  
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  
+  pop ix
+  
+; vOut[numOut].v = sumVec2(vIn[0].v, scaledVec2(interp , diffVec2(vIn[1].v, vIn[0].v)));
+
+  push iy
+  pop hl
+  
+  ld bc,ClipVertex
+  add hl,bc
+  
+  ld de,diffVec2_a
+  ldir
+  
+  push iy ; vIn
+  pop hl
+  
+  ld de,diffVec2_b
+  ldir
+  
+  call diffVec2
+  
+  ld hl,diffVec2_res
+  ld de,scaledVec2_v
+  ld bc,Vec2
+  ldir
+  
+  ld hl,ClipSegmentToLine_interp
+  ld de,scaledVec2_s
+  ld bc,3
+  ldir
+  
+  call scaledVec2
+  
+  ld hl,scaledVec2_res
+  ld de,sumVec2_b
+  ld bc,Vec2
+  ldir
+  
+  push iy
+  pop hl
+  
+  ld de,sumVec2_a
+  ldir
+  
+  call sumVec2
+  
+  push ix
+  pop hl
+  pop af
+  ld de,ClipVertex
+  call arrayIndex
+  push af
+  
+  ex de,hl
+  ld hl,sumVec2_res
+  ld bc,Vec2
+  ldir
+  
+;		if (distance0 > 0.0f)
+
+  push ix
+  ld ix,ClipSegmentToLine_distance0  
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  pop ix
+  
+  ld c,0
+  ld d,0
+  ld e,0
+  
+  call f24cmp
+  
+  jr c,ClipSegmentToLineElse; jump if distance0 <= 0
+  jr z,ClipSegmentToLineElse
+  
+; vOut[numOut].fp = vIn[0].fp
+; vOut[numOut].fp.inEdge1 = clipEdge
+; vOut[numOut].fp.inEdge2 = NO_EDGE;
+
+  push ix
+  pop hl
+  pop af
+  ld de,ClipVertex
+  call arrayIndex
+  push af
+  
+  ld bc,ClipVertex_fp
+  add hl,bc
+
+  push hl; store pointer vOut[numOut].fp
+  
+  ex de,hl
+  
+  push iy
+  pop hl
+  ld bc,ClipVertex_fp
+  add hl,bc
+  
+  ld bc,Edges
+  ldir
+  
+  pop hl ; get pointer
+  push hl ; store pointer
+  ld bc,Edges_inEdge1
+  add hl,bc
+  
+  ld a,(ClipSegmentToLine_clipEdge)
+  ld (hl),a
+  
+  pop hl ; get pointer
+  ld bc,Edges_inEdge2
+  add hl,bc
+  
+  ld (hl),NO_EDGE
+  
+  jr ClipSegmentToLineEndif
+  
+ClipSegmentToLineElse:
+
+; vOut[numOut].fp = vIn[1].fp
+; vOut[numOut].fp.inEdge1 = clipEdge
+; vOut[numOut].fp.inEdge2 = NO_EDGE;
+
+  push ix
+  pop hl
+  pop af
+  ld de,ClipVertex
+  call arrayIndex
+  push af
+  
+  ld bc,ClipVertex_fp
+  add hl,bc
+
+  push hl; store pointer vOut[numOut].fp
+  
+  ex de,hl
+  
+  push iy
+  pop hl
+  ld bc,ClipVertex_fp+ClipVertex
+  add hl,bc
+  
+  ld bc,Edges
+  ldir
+  
+  pop hl ; get pointer
+  push hl ; store pointer
+  ld bc,Edges_outEdge1
+  add hl,bc
+  
+  ld a,(ClipSegmentToLine_clipEdge)
+  ld (hl),a
+  
+  pop hl ; get pointer
+  ld bc,Edges_outEdge2
+  add hl,bc
+  
+  ld (hl),NO_EDGE
+  
+ClipSegmentToLineEndif
+
+  pop af
+  inc a
+  push af
+  
+ClipSegmentToLine5:
+  
+  pop af; numOut in a
+  ret
+
+; ----------------------------------------------------------------
+; void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Vec2 pos, struct Mat22 Rot, struct Vec2 normal)
+; IX = c
+; ----------------------------------------------------------------
+
+ComputeIncidentEdge_h: ds Vec2
+ComputeIncidentEdge_pos: ds Vec2
+ComputeIncidentEdge_Rot: ds Mat22
+ComputeIncidentEdge_normal: ds Vec2
+
+ComputeIncidentEdge_n: ds Vec2
+ComputeIncidentEdge_nAbs: ds Vec2
+ComputeIncidentEdge_RotT: ds Mat22
+ComputeIncidentEdge:
+
+; RotT = Transpose(Rot)
+
+    push iy
+
+    ld hl,ComputeIncidentEdge_Rot 
+    ld de,Transpose_mat
+    ld bc,12
+    ldir
+    
+    call Transpose
+
+    ld hl,Transpose_res
+    ld de,ComputeIncidentEdge_RotT
+    ld bc,12
+    ldir
+
+; n = minusVec2(matmul(RotT, normal))
+
+    ld hl,ComputeIncidentEdge_RotT 
+    ld de,matmul_A
+    ld bc,2*2*3
+    ldir
+
+    ld hl,ComputeIncidentEdge_normal
+    ld de,matmul_v
+    ld bc,Vec2
+    ldir
+
+    call matmul
+
+    ld hl,matmul_res
+    ld de,minusVec2_v
+    ld bc,6
+    ldir
+
+    call minusVec2
+
+    ld hl,minusVec2_res
+    ld de,ComputeIncidentEdge_n
+    ld bc,2*3
+    ldir
+
+; nAbs = Absv(n)
+
+    ld hl,ComputeIncidentEdge_n 
+    ld de,Absv_a
+    ld bc,Vec2
+    ldir
+
+    call Absv
+    
+    ld hl,Absv_res
+    ld de,ComputeIncidentEdge_nAbs
+    ld bc,Vec2
+    ldir
+
+;--------------------------------------------------------
+; if (nAbs.x > nAbs.y)
+;--------------------------------------------------------
+
+    ld iy,ComputeIncidentEdge_nAbs
+
+    ld a,(iy+0)
+    ld h,(iy+1)
+    ld l,(iy+2)
+
+    ld c,(iy+3)
+    ld d,(iy+4)
+    ld e,(iy+5)
+
+    call f24cmp
+
+    jp c, ComputeIncidentEdge_else ; jump if nAbs.x <= nAbs.y
+    jp z, ComputeIncidentEdge_else
+
+; if (n.x > 0.0f)
+
+    ld iy,ComputeIncidentEdge_n
+    ld a,(iy+0)   
+    ld h,(iy+1)
+    ld l,(iy+2)
+
+    ld c,0
+    ld d,0
+    ld e,0
+
+    call f24cmp
+
+    jr c, ComputeIncidentEdge_else1; n.x <= 0.0f
+    jr z, ComputeIncidentEdge_else1; n.x <= 0.0f
+
+    push ix
+    pop de
+    ld hl,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld a,(ix+Vec2_y)
+    call f24neg
+    ld (ix+Vec2_y),a
+
+    ld (ix+ClipVertex_fp+Edges_inEdge2),EDGE3
+    ld (ix+ClipVertex_fp+Edges_outEdge2),EDGE4
+
+    push ix
+    pop hl
+    ld bc,ClipVertex
+    add hl,bc
+    ex de,hl
+    ld hl,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld (ix+ClipVertex + ClipVertex_fp + Edges_inEdge2),EDGE4
+    ld (ix+ClipVertex + ClipVertex_fp + Edges_outEdge2),EDGE1
+    jr ComputeIncidentEdge_endif1
+
+ComputeIncidentEdge_else1:
+    push ix
+    pop de
+    ld hl,ComputeIncidentEdge_h
+    ld bc,6
+    ldir
+
+    ld a,(ix+0)
+    call f24neg
+    ld (ix+0),a
+
+    ld (ix+ClipVertex_fp+Edges_inEdge2),EDGE1
+    ld (ix+ClipVertex_fp+Edges_outEdge2),EDGE2
+
+    push ix
+    pop hl
+    ld de,ClipVertex
+    add hl,de
+    ex de,hl
+    ld hl,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld a,(ix+ClipVertex) ; only a needs to be negated in AHL
+    call f24neg
+    ld (ix+ClipVertex),a
+
+    ld a,(ix+ClipVertex+3)
+    call f24neg
+    ld (ix+ClipVertex+3),a
+
+    ld (ix+ClipVertex + ClipVertex_fp + Edges_inEdge2),EDGE2
+    ld (ix+ClipVertex + ClipVertex_fp + Edges_outEdge2),EDGE3
+ComputeIncidentEdge_endif1:
+
+    jp ComputeIncidentEdge_endif
+
+;---------------------------------------------------------
+; major else
+;---------------------------------------------------------
+
+ComputeIncidentEdge_else:
+
+    ld iy,ComputeIncidentEdge_n
+    ld a,(iy+3)
+    ld h,(iy+4)
+    ld l,(iy+5)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    jr c,ComputeIncidentEdge_else2
+    jr z,ComputeIncidentEdge_else2
+
+    ld hl,ComputeIncidentEdge_h
+    push ix
+    pop de
+    ld bc,Vec2
+    ldir
+        
+    ld (ix+ClipVertex_fp+Edges_inEdge2),EDGE4
+    ld (ix+ClipVertex_fp+Edges_outEdge2),EDGE1
+    
+    push ix
+    pop hl
+    ld de,ClipVertex
+    add hl,de
+    ex de,hl
+    ld hl,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+    
+    ld a,(ix+ClipVertex)
+    call f24neg
+    ld (ix+ClipVertex),a
+    
+    ld (ix+ClipVertex+ClipVertex_fp+Edges_inEdge2),EDGE1
+    ld (ix+ClipVertex+ClipVertex_fp+Edges_outEdge2),EDGE2
+    
+ComputeIncidentEdge_else2:
+
+    ld hl,ComputeIncidentEdge_h
+    push ix
+    pop de
+    ld bc,6
+    ldir
+
+    ld a,(ix+0)
+    call f24neg
+    ld (ix+0),a
+    
+    ld a,(ix+3)
+    call f24neg
+    ld (ix+3),a
+    
+    ld (ix+ClipVertex_fp+Edges_inEdge2),EDGE2
+    ld (ix+ClipVertex_fp+Edges_outEdge2),EDGE3
+    
+    push ix
+    pop hl
+    ld de,ClipVertex
+    add hl,de
+    ex de,hl
+    ld hl,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+    
+    ld a,(ix+ClipVertex+3)
+    call f24neg
+    ld (ix+ClipVertex+3),a
+    
+    ld (ix+ClipVertex+ClipVertex_fp+Edges_inEdge2),EDGE3
+    ld (ix+ClipVertex+ClipVertex_fp+Edges_outEdge2),EDGE4
+    
+ComputeIncidentEdge_endif:
+
+;-----------------------------------------------------------
+; c[0].v = sumVec2(pos, matmul(Rot, c[0].v))
+; c[1].v = sumVec2(pos, matmul(Rot, c[1].v))
+;-----------------------------------------------------------
+
+    ld hl,ComputeIncidentEdge_Rot
+    ld de,matmul_a
+    ld bc,12
+    ldir
+
+    push ix
+    pop hl
+
+    ld de,matmul_v
+    ld bc,6
+    ldir
+
+    call matmul
+
+    ld hl,ComputeIncidentEdge_pos
+    ld de,sumVec2_a
+    ld bc,6
+    ldir
+
+    ld hl,matmul_res
+    ld de,sumVec2_b
+    ld bc,6
+    ldir
+
+    call sumVec2
+
+    push ix
+    pop de
+    ld hl,sumVec2_res
+    ld bc,Vec2
+    ldir
+
+    ;----
+    
+    push ix
+    pop hl
+    
+    ld bc,ClipVertex
+    add hl,bc
+    push hl ; store pointer for final copy
+    ld de,matmul_v
+    ld bc,Vec2
+    ldir
+    
+    call matmul ; Rot still in place
+
+    ld hl,matmul_res
+    ld de,sumVec2_b
+    ld bc,6
+    ldir
+
+    call sumVec2 ; pos still in place
+
+    pop de ; get pointer back
+    ld hl,sumVec2_res
+    ld bc,Vec2
+    ldir
+	
+	pop iy
+
+    ret
+
+; -----------------------------------------------------------------------------
+; int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
+; hl=contact, ix=bodyA, iy=bodyB
+;-----------------------------------------------------------------------------
+
+Collide_hA: ds Vec2
+Collide_hB: ds Vec2
+Collide_RotA: ds 12
+Collide_RotB: ds 12
+Collide_posA: ds Vec2
+Collide_posB: ds Vec2
+Collide_RotAT ds Mat22
+Collide_RotBT ds Mat22
+Collide_a1 ds Vec2
+Collide_b1 ds Vec2
+Collide_a2 ds Vec2
+Collide_b2 ds Vec2
+Collide_dp ds Vec2
+Collide_dA ds Vec2
+Collide_dB ds Vec2
+Collide_C ds Mat22
+Collide_absC ds Mat22
+Collide_absCT ds Mat22
+Collide_faceA ds Vec2
+Collide_faceB ds Vec2
+Collide_axis ds 1
+Collide_separation ds 3
+Collide_normal ds Vec2
+Collide_frontNormal ds Vec2
+Collide_sideNormal ds Vec2
+Collide_incidentEdge ds ClipVertex*2
+Collide_front ds 3
+Collide_negSide ds 3
+Collide_posSide ds 3
+Collide_negEdge ds 1
+Collide_posEdge ds 1
+Collide_side ds 3
+Collide_clipPoints1 ds ClipVertex*2
+Collide_clipPoints2 ds ClipVertex*2
+Collide_numContacts ds 1
+
+Collide:
+
+    push ix
+	push iy
+    push hl ; contacts
+
+;	struct Vec2 hA = scaledVec2(0.5f, bodyA->width)
+    push ix
+    pop hl
+    ld bc,Body_width
+    add hl,bc
+    ld de,scaledVec2_v
+    ld bc,Vec2
+    ldir
+
+; .db $00,$00,$3E  ;0.5
+
+    push ix
+    ld ix,scaledVec2_s
+    ld (ix+0),$3E ; 0.5
+    ld (ix+1),0
+    ld (ix+2),0
+    pop ix
+
+    call scaledVec2
+
+    ld hl,scaledVec2_res
+    ld de,Collide_hA
+    ld bc,Vec2
+    ldir
+
+;	struct Vec2 hB = scaledVec2(0.5f, bodyB->width)
+    push iy
+    pop hl
+    ld bc,Body_width
+    add hl,bc
+    ld de,scaledVec2_v
+    ld bc,Vec2
+    ldir
+
+; already done
+;    push ix
+;    ld ix,scaledVec2_a
+;    ld (ix+0),$3E
+;    ld (ix+1),0
+;    ld (ix+2),0
+;    pop ix
+
+    call scaledVec2
+
+    ld hl,scaledVec2_res
+    ld de,Collide_hB
+    ld bc,Vec2
+    ldir
+    
+;	struct Vec2 posA = bodyA->position
+;	struct Vec2 posB = bodyB->position
+
+    push ix
+    pop hl
+    ld bc,Body_position
+    add hl,bc
+    ld de,Collide_posA
+    ld bc,Vec2
+    ldir
+
+    push iy
+    pop hl
+    ld bc,Body_position
+    add hl,bc
+    ld de,Collide_posB
+    ld bc,Vec2
+    ldir
+    
+;  initMat22(&RotA, bodyA->rotation); initMat22(&RotB, bodyB->rotation)
+    
+    push ix
+    pop hl
+    
+    ld bc,Body_rotation
+    add hl,bc
+    
+    ld de,initMat22_angle
+    ld bc,3
+    ldir
+    
+    ld hl,Collide_RotA
+    call initMat22    
+
+    push iy
+    pop hl
+    
+    ld bc,Body_rotation
+    add hl,bc
+    
+    ld de,initMat22_angle
+    ld bc,3
+    ldir
+    
+    ld hl,Collide_RotB
+    call initMat22
+
+; bodyA and bodyB are not used again so we can use ix, iy freely!
+; HL = contacts still on stack    
+    
+;   struct Mat22 RotAT = Transpose(RotA)
+;	struct Mat22 RotBT = Transpose(RotB)
+
+    ld hl,Collide_RotA
+    ld de,Transpose_mat
+    ld bc,12
+    ldir
+    
+    call Transpose
+    
+    ld hl,Transpose_res
+    ld de,Collide_RotAT
+    ld bc,12
+    ldir
+
+    ld hl,Collide_RotB
+    ld de,Transpose_mat
+    ld bc,12
+    ldir
+    
+    call Transpose
+    
+    ld hl,Transpose_res
+    ld de,Collide_RotBT
+    ld bc,12
+    ldir
+    
+;   struct Vec2 a1 = RotA.col1, a2 = RotA.col2
+;	struct Vec2 b1 = RotB.col1, b2 = RotB.col2
+
+    ld hl,Collide_RotA+Mat22_col1
+    ld de,Collide_a1
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_RotA+Mat22_col2
+    ld de,Collide_a2
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_RotB+Mat22_col1
+    ld de,Collide_b1
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_RotB+Mat22_col2
+    ld de,Collide_b2
+    ld bc,Vec2
+    ldir
+
+;	struct Vec2 dp = diffVec2(posB, posA);
+
+    ld hl,Collide_posB
+    ld de,diffVec2_a
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posA
+    ld de,diffVec2_b
+    ld bc,Vec2
+    ldir
+    
+    call diffVec2
+    
+    ld hl,diffVec2_res
+    ld de,Collide_dp
+    ld bc,Vec2
+    ldir
+    
+;	struct Vec2 dA = matmul(RotAT, dp)
+;	struct Vec2 dB = matmul(RotBT, dp)
+
+    ld hl,Collide_dp
+    ld de,matmul_v
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_RotAT
+    ld de,matmul_A
+    ld bc,12
+    ldir
+    
+    call matmul
+    
+    ld hl,matmul_res
+    ld de,Collide_dA
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_RotBT
+    ld de,matmul_A
+    ld bc,12
+    ldir
+    
+    call matmul
+    
+    ld hl,matmul_res
+    ld de,Collide_dB
+    ld bc,Vec2
+    ldir
+    
+    ;	struct Mat22 C = matmulMM(RotAT, RotB)
+    
+    ld hl,Collide_RotAT
+    ld de,matmulMM_A
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_RotB
+    ld de,matmulMM_B
+    ld bc,12
+    ldir
+    
+    call matmulMM
+    
+    ld hl,matmulMM_res
+    ld de,Collide_C
+    ld bc,12
+    ldir
+    
+;   struct Mat22 absC = AbsM(C)
+;	struct Mat22 absCT = Transpose(absC)
+    
+    ld hl,Collide_C
+    ld de,AbsM_a
+    ld bc,12
+    ldir
+    
+    call AbsM
+    
+    ld hl,AbsM_res
+    ld de,Collide_absC
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_absC
+    ld de,Transpose_mat
+    ld bc,12
+    ldir
+    
+    call Transpose
+    
+    ld hl,Transpose_res
+    ld de,Collide_absCT
+    ld bc,12
+    ldir
+        
+;	struct Vec2 faceA = diffVec2(Absv(dA), hA)
+;   subfromVec2(&faceA, matmul(absC, hB))
+    
+    ld hl,Collide_dA
+    ld de,Absv_a
+    ld bc,Vec2
+    ldir    
+    
+    call Absv
+    
+    ld hl,Absv_res
+    ld de,diffVec2_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_hA
+    ld de,diffVec2_b
+    ld bc,Vec2
+    ldir
+    
+    call diffVec2
+    
+    ld hl,diffVec2_res
+    ld de,Collide_faceA
+    ld bc,Vec2
+    ldir
+    
+    ld ix,Collide_faceA
+    ld hl,Collide_absC
+    ld de,matmul_a
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_hB
+    ld de,matmul_v
+    ld bc,Vec2
+    ldir
+    
+    call matmul
+    
+    ld hl,matmul_res
+    ld de,subfromVec2_other
+    ld bc,Vec2
+    ldir
+    
+    call subfromVec2
+    
+;	if (faceA.x > 0.0f || faceA.y > 0.0f)
+;		return 0;
+ 
+    ld ix,Collide_faceA
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    jr z,Collide1
+    ld a,0
+    ret nc
+
+Collide1:
+    ld ix,Collide_faceA
+    ld a,(ix+3)
+    ld h,(ix+4)
+    ld l,(ix+5)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    jr z,Collide2
+    ld a,0
+    ret nc
+    
+Collide2:    
+
+;	struct Vec2 faceB = diffVec2(Absv(dB), hB)
+;   subfromVec2(&faceB, matmul(absCT, hA))
+
+    ld hl,Collide_dB
+    ld de,Absv_a
+    ld bc,Vec2
+    ldir    
+    
+    call Absv
+    
+    ld hl,Absv_res
+    ld de,diffVec2_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_hB
+    ld de,diffVec2_b
+    ld bc,Vec2
+    ldir
+    
+    call diffVec2
+    
+    ld hl,diffVec2_res
+    ld de,Collide_faceB
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_absCT
+    ld de,matmul_a
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_hA
+    ld de,matmul_v
+    ld bc,Vec2
+    ldir
+    
+    call matmul
+    
+    ld hl,matmul_res
+    ld de,subfromVec2_other
+    ld bc,Vec2
+    ldir
+
+    ld ix,Collide_faceB
+    call subfromVec2
+
+;	if (faceB.x > 0.0f || faceB.y > 0.0f)
+;		return 0;
+ 
+    push ix
+    ld ix,Collide_faceB
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    pop ix
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    jr z,Collide3
+    ld a,0
+    ret nc
+
+Collide3:
+    push ix
+    ld ix,Collide_faceB
+    ld a,(ix+3)
+    ld h,(ix+4)
+    ld l,(ix+5)
+    pop ix
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    jr z,Collide4
+    ld a,0
+    ret nc
+    
+Collide4:
+
+;	axis = FACE_A_X
+;	separation = faceA.x
+;	normal = dA.x > 0.0f ? RotA.col1 : minusVec2(RotA.col1)
+
+    ld a,FACE_A_X
+    ld (Collide_axis),a
+
+    ld hl,Collide_faceA
+    ld de,Collide_separation
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_dA
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    jr c,Collide5
+    jr z,Collide5
+    
+    ld hl,Collide_RotA
+    jr Collide6
+
+Collide5:    
+    ld hl,Collide_RotA
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir
+
+    call minusVec2
+    ld hl,minusVec2_res    
+
+Collide6:    
+    ld de,Collide_normal
+    ld bc,Vec2
+    ldir
+
+;	if (faceA.y > relativeTol * separation + absoluteTol * hA.y)
+;	{
+;		axis = FACE_A_Y
+;		separation = faceA.y
+;		normal = dA.y > 0.0f ? RotA.col2 : minusVec2(RotA.col2)
+;	}
+        
+        
+; .db $66,$E6,$3E  ;0.95
+
+    ld a,$3E; 0.95 (relativeTol)
+    ld h,$E6
+    ld l,$66
+
+    ld ix,Collide_separation
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24mul
+    
+    push af
+    push hl
+    
+    ; .db $AE,$47,$38
+    ld a,$38; 0.01 (absoluteTol)
+    ld h,$47 
+    ld l,$AE
+
+    ld ix,Collide_hA
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24mul
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    pop hl
+    pop af
+    
+    call f24add
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    ld ix,Collide_faceA
+    ld a,(ix+3)
+    ld h,(ix+4)
+    ld l,(ix+5)
+    
+    call f24cmp
+    
+    jr c,Collide7
+    jr z,Collide7
+    
+    ld a,FACE_A_Y
+    ld (Collide_axis),a
+    
+    ld hl,Collide_faceA+3
+    ld de,Collide_separation
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_dA
+    ld a,(ix+3)
+    ld h,(ix+4)
+    ld l,(ix+5)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    jr c,Collide7a
+    jr z,Collide7a
+    
+    ld hl,Collide_RotA+Mat22_col2
+    jr Collide7b
+
+Collide7a:    
+    ld hl,Collide_RotA+Mat22_col2
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir
+
+    call minusVec2
+    ld hl,minusVec2_res    
+
+Collide7b:    
+    ld de,Collide_normal
+    ld bc,Vec2
+    ldir
+    
+Collide7:
+        
+;	if (faceB.x > relativeTol * separation + absoluteTol * hB.x)
+;	{
+;		axis = FACE_B_X
+;		separation = faceB.x
+;		normal = dB.x > 0.0f ? RotB.col1 : minusVec2(RotB.col1)
+;	}
+
+    ld a,$3E; 0.95 (relativeTol)
+    ld h,$E6
+    ld l,$66
+        
+    ld ix,Collide_separation
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24mul
+    
+    push af
+    push hl
+
+    ld a,$38; 0.01 (absoluteTol)
+    ld h,$47 
+    ld l,$AE
+    
+    ld ix,Collide_hB
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24mul
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    pop hl
+    pop af
+    
+    call f24add
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    ld ix,Collide_faceB
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    call f24cmp
+    
+    jr c,Collide8
+    jr z,Collide8
+    
+    ld a,FACE_B_X
+    ld (Collide_axis),a
+    
+    ld hl,Collide_faceB
+    ld de,Collide_separation
+    ld bc,3
+    ldir
+
+    ld ix,Collide_dB
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    jr c,Collide8a
+    jr z,Collide8a
+    
+    ld hl,Collide_RotB
+    jr Collide8b
+
+Collide8a:    
+    ld hl,Collide_RotB
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir
+
+    call minusVec2
+    ld hl,minusVec2_res    
+
+Collide8b:    
+    ld de,Collide_normal
+    ld bc,Vec2
+    ldir
+    
+Collide8:
+
+;	if (faceB.y > relativeTol * separation + absoluteTol * hB.y)
+;	{
+;		axis = FACE_B_Y
+;		separation = faceB.y
+;		normal = dB.y > 0.0f ? RotB.col2 : minusVec2(RotB.col2)
+;	}
+
+    ld a,$3E; 0.95 (relativeTol)
+    ld h,$E6
+    ld l,$66
+
+    ld ix,Collide_separation
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24mul
+    
+    push af
+    push hl
+
+    ld a,$38; 0.01 (absoluteTol)
+    ld h,$47 
+    ld l,$AE
+    
+    ld ix,Collide_hB
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24mul
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    pop hl
+    pop af
+    
+    call f24add
+    
+    ld c,a
+    ld d,h
+    ld e,l
+    
+    ld ix,Collide_faceB+3
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    call f24cmp
+    
+    jr c,Collide9
+    jr z,Collide9
+    
+    ld a,FACE_B_Y
+    ld (Collide_axis),a
+    
+    ld hl,Collide_faceB+3
+    ld de,Collide_separation
+    ld bc,3
+    ldir
+
+    ld ix,Collide_dB
+    ld a,(ix+3)
+    ld h,(ix+4)
+    ld l,(ix+5)
+    
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    jr c,Collide9a
+    jr z,Collide9a
+    
+    ld hl,Collide_RotB+Mat22_col2
+    jr Collide9b
+
+Collide9a:    
+    ld hl,Collide_RotB+Mat22_col2
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir
+
+    call minusVec2
+    ld hl,minusVec2_res    
+
+Collide9b:    
+    ld de,Collide_normal
+    ld bc,Vec2
+    ldir
+    
+Collide9:
+        
+    ld ix,Collide_incidentEdge
+    call initClipVertex
+        
+    ld ix,Collide_incidentEdge+ClipVertex
+    call initClipVertex
+
+; The Switch
+; case FACE_A_X
+    
+    ld a,(Collide_axis)
+    cp FACE_A_X
+    jp nz,case2
+    
+    ld hl,Collide_normal
+    ld de,Collide_frontNormal
+    ld bc,Vec2
+    ldir    
+    
+    ld hl,Collide_posA
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld ix,Dot_res
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hA
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_front
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld hl,Collide_RotA+Mat22_col2
+    ld de,Collide_sideNormal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posA
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_sideNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld hl,Dot_res
+    ld de,Collide_side
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    call f24neg
+    
+    ld ix,Collide_hA
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_negSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hA
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_posSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld a,EDGE3
+    ld (Collide_negEdge),a
+    
+    ld a,EDGE1
+    ld (Collide_posEdge),a
+    
+    ld ix,Collide_incidentEdge
+
+    ld hl,Collide_hB
+    ld de,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posB    
+    ld de,ComputeIncidentEdge_pos
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_RotB
+    ld de,ComputeIncidentEdge_Rot
+    ld bc,Mat22
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,ComputeIncidentEdge_normal
+    ld bc,Vec2
+    ldir
+    
+    call ComputeIncidentEdge
+    jp case_end
+
+; case FACE_A_Y
+    
+case2:    
+    ld a,(Collide_axis)
+    cp FACE_A_Y
+    jp nz,case3
+
+    ld hl,Collide_normal
+    ld de,Collide_frontNormal
+    ld bc,Vec2
+    ldir    
+    
+    ld hl,Collide_posA
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld ix,Dot_res
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hA
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_front
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld hl,Collide_RotA
+    ld de,Collide_sideNormal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posA
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_sideNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld hl,Dot_res
+    ld de,Collide_side
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    call f24neg
+    
+    ld ix,Collide_hA
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_negSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hA
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_posSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld a,EDGE2
+    ld (Collide_negEdge),a
+    
+    ld a,EDGE4
+    ld (Collide_posEdge),a
+    
+    ld ix,Collide_incidentEdge
+
+    ld hl,Collide_hB
+    ld de,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posB    
+    ld de,ComputeIncidentEdge_pos
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_RotB
+    ld de,ComputeIncidentEdge_Rot
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,ComputeIncidentEdge_normal
+    ld bc,Vec2
+    ldir
+    
+    call ComputeIncidentEdge
+    
+    jp case_end
+
+; case FACE_B_X
+
+case3:    
+    ld a,(Collide_axis)
+    cp FACE_B_X
+    jp nz,case4
+
+    ld hl,Collide_normal
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir    
+    
+    call minusVec2
+    
+    ld hl,minusVec2_res
+    ld de,Collide_frontNormal
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_posB
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld ix,Dot_res
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hB
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_front
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld hl,Collide_RotB+Mat22_col2
+    ld de,Collide_sideNormal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posB
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_sideNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld hl,Dot_res
+    ld de,Collide_side
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    call f24neg
+    
+    ld ix,Collide_hB
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_negSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hB
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_posSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld a,EDGE3
+    ld (Collide_negEdge),a
+    
+    ld a,EDGE1
+    ld (Collide_posEdge),a
+    
+    ld ix,Collide_incidentEdge
+
+    ld hl,Collide_hA
+    ld de,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posA
+    ld de,ComputeIncidentEdge_pos
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_RotA
+    ld de,ComputeIncidentEdge_Rot
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,ComputeIncidentEdge_normal
+    ld bc,Vec2
+    ldir
+    
+    call ComputeIncidentEdge
+    jp case_end
+
+; case FACE_B_Y
+
+case4:    
+    ld a,(Collide_axis)
+    cp FACE_B_Y
+    jp nz,case_end
+
+    ld hl,Collide_normal
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir    
+    
+    call minusVec2
+    
+    ld hl,minusVec2_res
+    ld de,Collide_frontNormal
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_posB
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld ix,Dot_res
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hB
+    ld c,(ix+3)
+    ld d,(ix+4)
+    ld e,(ix+5)
+    
+    call f24add
+    
+    ld ix,Collide_front
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld hl,Collide_RotB
+    ld de,Collide_sideNormal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posB
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_sideNormal
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+    
+    ld hl,Dot_res
+    ld de,Collide_side
+    ld bc,3
+    ldir
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    call f24neg
+    
+    ld ix,Collide_hB
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_negSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld ix,Collide_side
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_hB
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24add
+    
+    ld ix,Collide_posSide
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+    
+    ld a,EDGE2
+    ld (Collide_negEdge),a
+    
+    ld a,EDGE4
+    ld (Collide_posEdge),a
+    
+    ld ix,Collide_incidentEdge
+
+    ld hl,Collide_hA
+    ld de,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posA    
+    ld de,ComputeIncidentEdge_pos
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_RotA
+    ld de,ComputeIncidentEdge_Rot
+    ld bc,12
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,ComputeIncidentEdge_normal
+    ld bc,Vec2
+    ldir
+    
+    call ComputeIncidentEdge
+
+case_end:
+
+    ld ix,Collide_clipPoints1
+    call initClipVertex
+
+    ld ix,Collide_clipPoints1+ClipVertex
+    call initClipVertex
+
+    ld ix,Collide_clipPoints2
+    call initClipVertex
+
+    ld ix,Collide_clipPoints2+ClipVertex
+    call initClipVertex
+
+; np = ClipSegmentToLine(clipPoints1, incidentEdge, minusVec2(sideNormal), negSide, negEdge)
+
+; if (np < 2)
+; return 0
+
+; NB: int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
+;                       struct Vec2 normal, float offset, char clipEdge)
+; ix points to vOut, iy points to vIn
+
+
+    ld ix,Collide_clipPoints1
+    ld iy,Collide_incidentEdge
+
+    ld hl,Collide_sideNormal
+    ld de,minusVec2_v
+    ld bc,Vec2
+    ldir
+
+    call minusVec2
+
+    ld hl,minusVec2_res
+    ld de,ClipSegmentToLine_normal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_negSide
+    ld de,ClipSegmentToLine_offset
+    ld bc,3
+    ldir
+    
+    ld a,(Collide_negEdge)
+    ld (ClipSegmentToLine_clipEdge),a
+            
+    call ClipSegmentToLine
+    
+    cp 2
+    ld a,0
+    
+    ret c
+    
+;	np = ClipSegmentToLine(clipPoints2, clipPoints1,  sideNormal, posSide, posEdge)
+
+;	if (np < 2)
+;		return 0
+    
+    ld ix,Collide_clipPoints2
+    ld iy,Collide_clipPoints1
+    
+    ld hl,Collide_sideNormal
+    ld de,ClipSegmentToLine_normal
+    ld bc,Vec2
+    ldir
+
+    ld hl,Collide_posSide
+    ld de,ClipSegmentToLine_offset
+    ld bc,3
+    ldir
+    
+    ld a,(Collide_posEdge)
+    ld (ClipSegmentToLine_clipEdge),a
+    
+    call ClipSegmentToLine
+    
+    cp 2
+    ld a,0
+    
+    ret c
+    
+;		float separation = Dot(frontNormal, clipPoints2[i].v) - front
+;
+;		if (separation <= 0)
+;		{
+;			contacts[numContacts].separation = separation
+;			contacts[numContacts].normal = normal
+;			// slide contact point onto reference face (easy to cull)
+;			contacts[numContacts].position = diffVec2(clipPoints2[i].v, scaledVec2(separation, frontNormal))
+;			contacts[numContacts].feature = clipPoints2[i].fp
+;			if (axis == FACE_B_X || axis == FACE_B_Y)
+;				Flip(&contacts[numContacts].feature)
+;			++numContacts
+;		}
+
+; in this loopo we will store bc (loop counter) and hl=contacts[numContacts] on stack
+; Also iy=clipPoints2[i]
+
+    ld a,0
+    ld (Collide_numContacts),a
+    
+    ld b,0
+CollideLoop:
+    push bc
+
+    ld hl,Collide_frontNormal
+    ld de,Dot_a
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_clipPoints2
+    
+    pop bc
+    push bc
+    ld a,b
+    ld de,ClipVertex
+    call arrayIndex
+    push hl
+    pop iy ; store clipPoints2[i]
+    
+    ld de,Dot_b
+    ld bc,Vec2
+    ldir
+    
+    call Dot
+
+    ld ix,Dot_res
+    ld a,(ix+0)
+    ld h,(ix+1)
+    ld l,(ix+2)
+    
+    ld ix,Collide_front
+    ld c,(ix+0)
+    ld d,(ix+1)
+    ld e,(ix+2)
+    
+    call f24sub
+    
+    ld ix,Collide_separation
+    ld (ix+0),a
+    ld (ix+1),h
+    ld (ix+2),l
+            
+    ld c,0
+    ld d,0
+    ld e,0
+    
+    call f24cmp
+    
+    ; jump if separation > 0
+    jr z,Collide11
+    jp nc,Collide10
+Collide11:
+
+    pop hl; contacts
+    ld de,Contact
+    ld a,(Collide_numContacts)
+    call arrayIndex
+    push hl ; store pointer contacts[numContacts]
+    
+    ld de,Contact_separation
+    add hl,de
+    ex de,hl
+    ld hl,Collide_separation
+    ld bc,3
+    ldir
+    
+    pop hl
+    push hl
+    ld de,Contact_normal
+    add hl,de
+    ex de,hl
+    ld hl,Collide_normal
+    ld bc,Vec2
+    ldir
+    
+    ld hl,Collide_separation
+    ld de,scaledVec2_s
+    ld bc,3
+    ldir
+    
+    ld hl,Collide_frontNormal
+    ld de,scaledVec2_v
+    ld bc,Vec2
+    ldir
+    
+    call scaledVec2
+    
+    ld hl,scaledVec2_res
+    ld de,diffVec2_b
+    ld bc,Vec2
+    ldir
+
+    push iy
+    pop hl    
+    ld de,diffVec2_a
+    ld bc,Vec2
+    ldir
+    
+    call diffVec2
+    
+    pop hl
+    push hl
+    
+    ld de,Contact_position
+    add hl,de
+    ex de,hl
+    ld hl,diffVec2_res
+    ld bc,Vec2
+    ldir
+
+    pop hl
+    
+    ld de,Contact_feature
+    add hl,de
+    push hl ; store pointer contacts[numContacts].feature
+    ex de,hl
+    push iy
+    pop hl   ; clipPoints2[i]
+    ld bc,ClipVertex_fp
+    add hl,bc
+    ld bc,Edges
+    ldir
+
+    pop ix ; contacts[numContacts].feature
+
+    ld a,(Collide_axis)
+    cp FACE_B_X
+    jr z,Collide12 ; do it
+    
+    cp FACE_B_Y
+    jr z,Collide12 ; do it
+    
+    jr Collide13   ; condition not met so don't do it
+
+Collide12:
+    
+    call Flip ; pass in ix
+
+Collide13:
+    ld a,(Collide_numContacts)
+    inc a
+    ld (Collide_numContacts),a    
+    
+Collide10:    
+
+    pop bc
+    ld a,b
+    cp 1
+    jp nz, CollideLoop
+   
+    ld a,(Collide_numContacts)
+	
+	pop iy
+	pop ix
+    ret
+   
+; ################################################################   
+   
+; ----------------------------------------------------------------
+; f24 library from z80float (https://github.com/Zeda/z80float/tree/master/f24)
+; These routines do not affect IX or IY, but will clobber everything else!
+; slightly adapted from original for ZX Spin assembler, only a subset of routines here:
+; no trig (except sin and cos), no exp, log, pow, amean, geomean, bg, rand, sqrt
+; no special mul or div
+; ----------------------------------------------------------------
+
+; --------------------------------------------------------------------------
+; f24add
+; --------------------------------------------------------------------------
+
+f24add:
+;AHL + CDE ==> AHL
+;Destroys BC,DE
+;
+;save A
+  ld b,a
+
+;check for special values
+  and $7F
+  jr nz,L1
+return_CDE:
+  ld a,c
+  ex de,hl
+  ret
+L1:
+  inc a
+  jp m,f24add_op1_inf_nan
+
+  ld a,c
+;check for special values
+  and $7F
+  jp z,return_exp_b
+
+  inc a
+  jp m,return_CDE
+
+
+  ld a,b
+  xor c
+  jp m,f24add_subtract
+;we need to add
+
+  call f24add_reorder
+  jr z,f24add_add_same_exp
+  ret nc
+  push bc
+  call rshift_1DE
+  sla b
+  adc hl,de
+  ;if carry is reset, then we are all good :)
+  pop de
+  ld a,d
+  ret nc
+;otherwise, we need to increment the sign and see if it overflows to inf
+  and $7F
+  cp $7E
+  ld a,d
+  jr z,f24_return_inf
+  inc a
+
+;we also need to shift a 0 down into the HL
+  srl h
+  rr l
+  ret nc
+  inc hl
+  ret
+
+f24add_add_same_exp:
+  ld a,b
+  and $7F
+  cp $7E
+  ld a,b
+  jr z,f24_return_inf
+  inc a
+  add hl,de
+  rr h
+  rr l
+  ret nc
+  inc l
+  ret nz
+  inc h
+  ret nz
+  inc a
+  ret
+
+f24_return_inf:
+  or %01111111
+  ld hl,0
+  ret
+
+
+f24add_subtract:
+  call f24add_reorder
+  jr z,f24add_subtract_same_exp
+  ret nc
+  push bc
+  call rshift_1DE
+  sub c
+  ld c,a
+  ld a,0
+  sbc a,b
+  ld b,a
+  sbc hl,de
+  ;if carry is not set, then we are all good :)
+  pop de
+  ld a,d
+  ret nc
+
+  ;otherwise, the implicit bit is set to 0, so we need to renormalize
+normalize_D_HLBC:
+;D is the sign+exponent
+;HLBC is the significand
+;returns AHLBC
+  ;make sure HLBC is not 0
+  ld a,h
+  or l
+  or b
+  or c
+  ret z
+
+  ld a,d
+normalize_D_HLBC_nonzero:
+  ;save the sign
+  add a,a
+  push af
+  rrca
+
+L2:
+  dec a
+  jr z,L3
+  sla c
+  rl b
+  adc hl,hl
+  jp nc,L2
+  ;now round
+  sla c
+  ld bc,0
+  adc hl,bc
+  ;if carry is set, then the implicit bit is 2, and the rest of the exponent is 0
+  ;so we can just increment A and keep HL as 0
+  adc a,b
+  add a,a
+L3:
+  ld d,a
+  pop af
+  ld a,d
+  rra
+  ret
+
+f24add_subtract_same_exp:
+;subtract the significands
+  ld a,b
+;  or a
+  sbc hl,de
+
+;if zero, then the result is zero, but we'll keep the same sign
+  jr nz,$+5;  assembles to 32 3 (the +5 is from the base)
+  and %10000000
+  ret
+
+  ;if the carry flag is set, then we need to change the sign of the output
+  ;and negate the significand. if reset, then we still need to normalize and whatnot
+  ld bc,0
+  jr nc,normalize_D_HLBC_nonzero
+  xor $80
+  ld d,a
+  xor a
+  sub l
+  ld l,a
+  sbc a,a
+  sub h
+  ld h,a
+  ld a,d
+  jr normalize_D_HLBC_nonzero
+
+f24add_reorder:
+  xor c
+  rlc c
+  rla
+;Want to rearrange so that A-C>=0
+  sub c
+  ret z
+  jr nc,L4
+  neg
+  ;A is the difference in exponents
+  rrc c
+  ld b,c
+  ex de,hl
+L4:
+;A is how many bits to shift DE right
+;B is the sign+exponent of the result
+  or a
+  rra
+  cp 18
+  ret c
+return_exp_b:
+  ld a,b
+  ret
+
+f24add_op1_inf_nan:
+  ld a,h
+  or l
+  jr nz,return_exp_b
+;so op1 is +inf or -inf
+;If op2 is finite, then just return op1
+  or c
+  jr z,return_exp_b
+  inc a
+  add a,a
+  jr nz,return_exp_b
+
+;if op2 is NaN, return NaN
+  ld a,d
+  or e
+  ld a,c
+  jr nz,L5
+
+;so |op1| and |op2| are inf
+;if they have the same sign, fine, else return NaN
+  cp b
+  ret z
+L5:
+  dec hl
+  ret
+
+rshift_1DE:
+  ld bc,0
+  scf
+L6:
+  rr d
+  rr e
+  rr b
+  rr c
+  dec a
+  jr nz,L6
+  ret
+  
+; --------------------------------------------------------------------------
+; f24sub, f24rsub, f24neg
+; --------------------------------------------------------------------------
+
+f24sub:
+;AHL - CDE ==> AHL
+;Destroys BC,DE
+;
+  ld b,a
+  ld a,c
+  xor $80
+  ld c,a
+  ld a,b
+  jp f24add
+
+f24rsub:
+;-AHL + CDE ==> AHL
+;Destroys BC,DE
+;
+  xor $80
+  jp f24add
+
+f24neg:
+;-AHL ==> AHL
+
+;-(+0) ==> +0
+  or a
+  ret z
+
+;otherwise, negate
+  xor 80h
+  ret
+  
+; --------------------------------------------------------------------------
+; f24mul
+; --------------------------------------------------------------------------
+
+f24mul:
+;AHL * CDE ==> AHL
+;Destroys BC,DE
+;
+
+;put the output sign in the top bit of A
+  ld b,a
+  ld a,c
+  and $80
+  xor b
+
+;check for special values
+;NaN*x ==> NaN
+;0*fin ==> 0
+;0*inf ==> NaN
+;inf*fin ==> inf
+;inf*inf ==> inf
+
+;save A
+  ld b,a
+  and $7F
+  jr z,f24mul_op1_0
+  inc a
+  jp m,f24mul_op1_inf_nan
+
+;so the first value is finite
+  ld a,c
+  and $7F
+  ld c,a
+  ret z
+  inc a
+  jp m,return_CDE
+
+;upper bit of B is the output sign
+;first approximation of the exponent is
+; (B&7F) + (C&7F) - 63
+  ld a,b
+  and $7F
+  add a,c
+  sub 63
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jr c,L7
+f24mul_return_inf:
+  ld a,b
+  or %01111111
+  ld hl,0   ;overflow so return inf
+  ret
+L7:
+
+  xor b
+  and $7F
+  xor b
+f24mul_significand:
+;save the exponent
+  push af
+
+;now compute (1.HL * 1.DE)
+; = (1+.HL)(1+.DE)
+; = 1+.HL+.DE+.HL*.DE
+  ld b,h
+  ld c,l
+  push hl
+  push de
+  call mul16
+  ;result is .DEHL
+  ;we can discard HL, but first round
+  xor a
+  sla h
+  ex de,hl
+  pop bc
+  adc hl,bc
+  adc a,0
+  pop bc
+  add hl,bc
+  adc a,0
+  rra
+;now 1+A.HL is the significand
+  pop bc    ;B is the exponent
+  ld a,b
+  ret z
+  ccf
+  rr h
+  rr l
+  inc a
+  inc a
+  add a,a
+  jr z,f24mul_return_inf
+  rra
+  dec a
+  ret
+
+f24mul_op1_0:
+  ld a,c
+  and $7F
+  ret z
+  inc a
+  jp m,f24mul_return_NaN
+  xor a
+  ret
+
+f24mul_op1_inf_nan:
+  ld a,h
+  or l
+  ld a,b
+  ret nz    ;NaN
+
+;inf*0 is NaN
+  ld a,c
+  and $7F
+  jr nz,L8
+f24mul_return_NaN:
+  dec a   ;inf*0
+  ld h,a  ;=
+  ld l,a  ;NaN
+  ret
+L8:
+  inc a
+  jp m,L9
+  ld a,b    ;returning inf
+  ret
+L9:
+
+;op1 is inf
+;op2 is is either NaN or inf
+; inf*NaN ==> NaN
+; inf*inf ==> inf
+;so just return op2's significand
+  ld a,c
+  ex de,hl
+  ret
+  
+; --------------------------------------------------------------------------
+; f24inv, f24div
+; --------------------------------------------------------------------------
+
+f24inv:
+  ld c,a
+  ex de,hl
+  ld a,$3F
+  ld hl,0
+f24div:
+;AHL * CDE ==> AHL
+;Destroys BC,DE
+;
+  ;put the output sign in B
+  ld b,a
+  xor c
+  add a,a
+  ld a,b
+  rla
+  rrca
+  ld b,a
+
+
+;check for special values
+;NaN/x ==> NaN
+;0/fin ==> 0
+;  0/0 ==> NaN
+;inf/inf ==> NaN
+;inf/x ==> inf
+;x/NaN ==> NaN
+;x/inf ==> 0
+;x/0 ==> NaN
+
+  and $7F
+  jp z,f24div_0_x
+  inc a
+  jp m,f24div_infnan_x
+
+  ld a,c
+  and $7F
+  jr nz,L10
+  dec a
+  ld h,a
+  ld l,a
+  ret
+L10:
+  inc a
+  jp m,f24div_x_infnan
+
+
+;upper bit of B is the output sign
+;first approximation of the exponent is
+; (B&7F) - (C&7F) + 63
+  res 7,c
+  ld a,b
+  and $7F
+  add a,63
+  sub c
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jr c,L11
+f24div_return_inf:
+  ld a,b
+  or %01111111
+  ld hl,0   ;overflow so return inf
+  ret
+L11:
+
+
+;now compute (1.HL / 1.DE)
+; = (1+.HL)/(1+.DE)
+
+; want 1.HL>1.DE, because then result is going to be 1.x
+;so we can end up doing (.HL-.DE)/(1.DE) to 16 bits precision
+  or a
+  ld c,0    ;top bit of 1.HL-1.DE
+  sbc hl,de
+  jr nc,f24div_ready
+  ;if carry is set, then DE was the larger of the two
+  ;so we need to decrement the exponent and do
+  ;(HL+DE)*2-DE
+  dec a     ;decrement exponent
+  ret z     ;return 0 if underflowed
+  add hl,de
+  add hl,hl
+  rl c
+  inc c
+  sbc hl,de
+  jr nc,f24div_ready
+  dec c
+f24div_ready:
+;C.HL is the numerator, 1.DE is the denominator
+;A is the exponent, B[7] is the sign
+;save the exponent and sign
+  push bc
+  push af
+
+;we can now commence 16  iterations of this division
+  call fdiv24_div16
+
+  pop de
+  pop bc
+  adc a,d
+  jp p,L12
+f24div_return_NaN:
+  dec a
+  ld h,a
+  ld l,a
+L12:
+  xor b
+  and $7F
+  xor b
+  ret
+
+
+fdiv24_div16:
+;negate the divisior for more efficient division
+;(16-bit addition is cheaper than subtraction)
+  xor a
+  sub e
+  ld e,a
+  ld a,0
+  sbc a,d
+  ld d,a
+  sbc a,a
+  dec a
+  ld b,a
+
+  ld a,c
+  call fdiv24_div8
+  rl c
+  push bc
+  call fdiv24_div8
+  rl c
+  ;check if  2*A.HL>1.DE
+  add hl,hl
+  adc a,a
+  add hl,de
+  adc a,b
+
+  pop hl
+  ld h,l
+  ld l,c
+  ld bc,0
+  ld a,b
+  adc hl,bc
+  ret
+
+fdiv24_div8:
+  call fdiv24_div4
+fdiv24_div4:
+  call fdiv24_div2
+fdiv24_div2:
+  call fdiv24_div1
+fdiv24_div1:
+  rl c
+  add hl,hl
+  adc a,a
+  ret z
+  add hl,de
+  adc a,b
+  ret c
+  sbc hl,de
+  sbc a,b
+  ret
+
+
+f24div_0_x:
+;make sure we aren't trying 0/NaN or 0/0
+  ld a,c
+  and $7F
+  jr z,f24div_return_NaN
+  inc a
+  jp m,L13
+  xor a
+  ret
+L13:
+  ld a,d
+  or e
+  ret z
+  ld a,c
+  ex de,hl
+  ret
+f24div_x_infnan:
+  ld a,d
+  or e
+  ret z
+  ld a,c  
+  ex de,hl
+  ret
+
+f24div_infnan_x:
+  ld a,h
+  or l
+  ld a,b
+  ret nz
+  ;make sure x is not inf NaN or 0
+  ld a,c
+  and $7F
+  jr z,f24div_return_NaN
+  inc a
+  jp m,f24div_return_NaN
+  ld a,b
+  ret
+
+; --------------------------------------------------------------------------
+; mul16
+; --------------------------------------------------------------------------
+
+;This was made by Runer112
+;Tested by jacobly
+mul16:
+;BC*DE --> DEHL
+; ~544.887cc as calculated in jacobly's test
+;min: 214cc  (DE = 1)
+;max: 667cc
+;avg: 544.4507883cc   however, deferring to jacobly's result as mine may have math issues ?
+;177 bytes
+	ld	a,d
+	ld	d,0
+	ld	h,b
+	ld	l,c
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit14
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit13
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit12
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit11
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit10
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit9
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit8
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit7
+	ld	a,e
+ 	and	%11111110
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit6
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit5
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit4
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit3
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit2
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit1
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit0
+	rr	e
+	ret	c
+	ld	h,d
+	ld	l,e
+	ret
+
+Mul_BC_DE_DEHL_Bit14:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit13
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit13:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit12
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit12:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit11
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit11:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit10
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit10:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit9
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit9:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit8
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit8:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit7
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit7:
+	ld	d,a
+	ld	a,e
+	and	%11111110
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit6
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit6:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit5
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit5:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit4
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit4:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit3
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit3:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit2
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit2:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit1
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit1:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit0
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit0:
+	add	hl,hl
+	adc	a,a
+	jr	c,Mul_BC_DE_DEHL_FunkyCarry
+	rr	e
+	ld	e,a
+	ret	nc
+	add	hl,bc
+	ret	nc
+	inc	e
+	ret	nz
+	inc	d
+	ret
+
+Mul_BC_DE_DEHL_FunkyCarry:
+	inc	d
+	rr	e
+	ld	e,a
+	ret	nc
+	add	hl,bc
+	ret	nc
+	inc	e
+	ret
+
+; --------------------------------------------------------------------------
+; u8tof24
+; --------------------------------------------------------------------------
+
+u8tof24:
+;Inputs:
+;   A holds a 8-bit unsigned integer, (0 to 255)
+;Outputs:
+;   Converts to an f24 float in AHL
+;   returns z flag set if zero, nz otherwise :)
+
+;Check if A is 0, if so return AHL == 0x00yyyy
+  or a
+  ret z
+
+  ld b,$3F+8    ;Initial exponent and sign
+
+; A is non-zero
+; shift A left until there is an overflow (the implicit bit)
+; meanwhile, decrement B, the exponent each iteration
+  dec b
+  add a,a
+  jr nc,$-2; assembles to 48 252 (252 = -4)
+  ld h,a
+  ld l,0
+  ld a,b
+  ret
+  
+; --------------------------------------------------------------------------
+; f24tou8
+; --------------------------------------------------------------------------
+
+f24tou8:
+;AHL to an 8-bit unsigned integer
+;NaN ==> 0
+;too big ==> 255 (even if neg)
+;negative values in range are mod 256
+
+;save the sign
+  ld c,a
+
+;Check if the input is 0
+  add a,a
+  ret z
+
+
+;check if inf or NaN
+  cp $FE
+  jr nz,L15
+  ld a,h
+  or l
+  jr nz,f24tou8_return_0
+f24tou8_return_inf:
+  ld a,255
+  ret
+L15:
+
+;now if exponent is less than 0, just return 0
+  cp 63*2
+  jr nc,L16
+f24tou8_return_0:
+  xor a
+  ret
+L16:
+
+;if the exponent is greater than 7, return 255
+  rra
+  sub 63
+  cp 8
+  jr nc,f24tou8_return_inf
+
+;all is good!
+;A is the exponent
+;1+A is the number of bits to read
+  ld b,a
+  or a
+  ld a,1
+  jr z,L17
+
+L18:  add hl,hl
+  rla
+  djnz L18
+L17:
+  sla c
+  ret nc
+  neg
+  ret
+
+; --------------------------------------------------------------------------
+; f24cmp
+; --------------------------------------------------------------------------
+
+f24cmp:
+;returns the flags for float AHL minus float CDE
+;   AHL >= CDE, nc
+;   AHL < CDE,  c
+;   AHL == CDE, z (and nc)
+;
+;Note:
+;   This allows some wiggle room in the bottom two bits. For example, if the two
+;   exponents are the same and the two significands differ by at most 3, they are
+;   considered equal.
+;
+;Note:
+;   NaN is a special case. This routines returns that NaN<x for all x.
+;   This gives the weird property NaN<NaN, and when sorting, NaN will be the
+;   smallest element.
+;
+
+;check for inf and NaN
+  ld b,a
+  and $7F
+  inc a
+  jp m,f24cmp_special
+  ld a,b
+
+;save the old exponent
+  push af
+  call f24sub
+
+;restore the old exponent
+  pop bc
+
+; if 0, return equal
+  xor 80h
+  ret z
+  xor 80h
+  ret z
+
+;if the difference was only in the bottom two bits, we'll call it good
+;check if (B&7F)-(A&7F) >= 15
+;check if (B&7F) > 14 + (A&7F)
+  ld c,a    ;new exponent, need to save the sign for later comparison
+  res 7,b
+  and $7F
+  add a,14
+  sub b
+  jr nc,$+4
+  xor a
+  ret
+
+;otherwise, not equal, so let's return the sign in c and nz
+  ld a,c
+return_nz_sign_a:
+  or $7F
+  add a,a
+  ret
+
+f24cmp_special:
+  ld a,h
+  or l
+  ccf
+  ret nz
+
+;so the first op is inf
+
+;if second of is finite, return the sign of B in carry and nz
+
+  ld a,c
+  and $7F
+  inc a
+  ld a,b
+  jp p,return_nz_sign_a
+
+;second op is either NaN or inf
+  ld a,d
+  or e
+  ret nz
+
+; op1 op2 result
+; 7F  7F  z, nc
+; 7F  FF  nz,nc
+; FF  7F  nz,c
+; FF  FF  z, nc
+  ld a,c
+  cp b
+  ret
+
+; --------------------------------------------------------------------------
+; f24abs
+; --------------------------------------------------------------------------
+
+f24abs:
+;abs(AHL) ==> AHL
+  and $7F
+  ret
+  
+; --------------------------------------------------------------------------
+; f24mod1
+; --------------------------------------------------------------------------
+
+f24mod1:
+;AHL % 1 ==> AHL
+
+; save A
+  ld c,a
+
+; 0 mod 1 is 0
+  add a,a
+  ret z
+
+;inf and NaN mod 1 are NaN
+  cp $FE
+  rrca    ;A is now the exponent
+  jr nz,L23
+  ld h,a  ; sets HL to non-zero
+  ret
+L23:
+
+;if A<63, the input is already less than 1
+  cp 63
+  jr c,mod_finished
+
+;if a>=63+16, then the input won't have enough bits for a fractional part
+  sub 63+16
+  add a,16
+  jr c,L23a
+  xor a
+  ret
+L23a:
+  ;A+1 is the number of bits to shift out of HL
+  ld b,a
+  jr z,L24
+  add hl,hl
+  djnz $-1
+L24:
+
+;now need to renormalize
+  ld a,h
+  or l
+  ret z
+  ld a,63
+  dec a
+  add hl,hl
+  jr nc,$-2
+mod_finished:
+;now if the top bit of C is set, then we still need to do 1.0-AHL
+  sla c
+  ret nc
+  ld c,63
+  ld de,0
+  jp f24rsub
+
+; --------------------------------------------------------------------------
+; f24sqr
+; --------------------------------------------------------------------------
+
+f24sqr:
+;AHL * AHL ==> AHL
+;Destroys BC,DE
+;
+
+;0*0 ==> 0
+  and $7F
+  ret z
+
+;NaN*NaN ==> NaN
+;inf*inf ==> inf
+  inc a
+  jp p,L26
+  dec a
+  ret
+L26:
+
+;first approximation of the exponent is
+; (A-1)+(A-1) - 63
+  add a,a   ;won't overflow since top bit is guaranteed reset at this point
+  sub 65
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jp nc,f24mul_return_inf+1
+
+  ld d,h
+  ld e,l
+
+  jp f24mul_significand
+
+; --------------------------------------------------------------------------
+; f24cos
+; --------------------------------------------------------------------------
+
+f24cos:
+;cos(AHL) ==> AHL
+
+;cos(0) == 0
+  add a,a
+  ret z
+
+;cos(inf)==cos(NaN)==NaN
+  rrca
+  cp $7F
+  jr nz,L20
+  ld h,a
+  ret
+L20:
+
+;multiply by 1/(2pi)
+  ld c,$3C
+  ld de,$45F3
+  call f24mul
+
+; Add .5
+  ld c,$3E
+  ld de,$0
+  call f24add
+
+;Now grab mod 1
+  call f24mod1
+
+xcos_stepin:
+;subtract off the .5
+  ld c,$BE
+  ld de,$0
+  call f24add
+
+;now x is on [-.5,.5], but we need to evaluate cos(x*2pi) with x on [-.125,.125]
+;We need to employ some identities
+;  cos(-x)=cos(x)
+;    make x positive
+  and $7F
+
+;  cos(x-pi)=-cos(x)
+;   if our x is now on [.25,.5], then subtract x from .5 absolute value,
+;   and return the negative result.
+  cp $3D
+  jr c,L21
+  xor 80h
+  ld c,$3E
+  ld de,$0
+  call f24add
+  call L21
+  xor 80h
+  ret
+L21:
+
+
+;  cos(pi/2-x)=sin(x)
+;    if our x is now on [.125,.25], subtract it from .25 and feed it to the sine routine.
+  cp $3C
+  jr c,L22
+  xor $80
+  ld c,$3D
+  ld de,$0
+  call f24add
+  jp f24sin_range_reduced
+L22:
+
+f24cos_range_reduced:
+;multiply by 2pi
+  ld c,$41
+  ld de,$9220
+  call f24mul
+
+;x is on [0,pi/4]
+;retun 1 + x^2 * (-0.5 + x^2 * (4.1660785675048828125e-2 + x^2 * (-1.36436522006988525390625e-3)))
+
+;-x^2
+  call f24sqr
+  xor $80
+
+;save x^2
+  push hl
+  ld c,a
+  push bc
+
+;multiply by 1.36436522006988525390625e-3
+  ld c,$35
+  ld de,$65A9
+  call f24mul
+
+;add 4.1660785675048828125e-2
+  ld c,$3A
+  ld de,$5549
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  push de
+  push bc
+  call f24mul
+
+;add .5
+  ld c,$3E
+  ld de,$0
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  call f24mul
+
+;add 1
+  ld c,$3F
+  ld de,$0
+  jp f24add
+
+; --------------------------------------------------------------------------
+; f24sin
+; --------------------------------------------------------------------------
+
+f24sin:
+;sin(AHL) ==> AHL
+
+;save A
+  ld b,a
+
+;sin(0) == 0
+  add a,a
+  ret z
+
+;sin(inf)==sin(NaN)==NaN
+  rrca
+  cp $7F
+  jr nz,L30
+  ld h,a
+  ret
+L30:
+
+  ld a,b
+;Need to apply range reduction
+; We want the input on [-pi/4,pi/4]
+;multiply by 1/(2pi)
+  ld c,$3C
+  ld de,$45F3
+  call f24mul
+
+; Add .25
+  ld c,$3D
+  ld de,$0
+  call f24add
+
+;Now grab mod 1
+  call f24mod1
+
+  jp xcos_stepin
+
+f24sin_range_reduced:
+;multiply by 2pi
+  ld c,$41
+  ld de,$9220
+  call f24mul
+
+;x is on [0,pi/4]
+;return x * (1 - x^2 * (0.16663360595703125 - x^2 * 8.1627368927001953125e-3)
+
+;save x
+  push hl
+  push af
+
+;-x^2
+  call f24sqr
+  xor $80
+
+;save x^2
+  push hl
+  ld c,a
+  push bc
+
+;multiply by 8.1627368927001953125e-3
+  ld c,$38
+  ld de,$0B7A
+  call f24mul
+
+;add 0.16663360595703125
+  ld c,$3C
+  ld de,$5544
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  call f24mul
+
+;add 1
+  ld c,$3F
+  ld de,$0
+  call f24add
+
+;multiply by x
+  pop bc
+  pop de
+  ld c,b
+  jp f24mul
+
+; ----------------------------------------------------------------
+; There are routines in z80float but they seem overkill.
+; I just need to convert a byte to ASCII and put in (HL)
+; Example: convert a=56 as "056"
+; input: a = number, HL=pointer to memory to store string (must be big enough)
+; Output: a=0, string placed into (HL)
+; destroys af,bc
+; ----------------------------------------------------------------
+
+u8toa:
+	 ld	c,-100
+	 call	Na1
+	 ld	c,-10
+	 call	Na1
+	 ld	c,-1
+Na1: ld	b,'0'-1
+Na2: inc	b
+	 add	a,c
+	 jr	c,Na2
+	 sub	c		;works as add 100/10/1
+     ld (hl),b               ; digit in b
+     inc hl
+	 ret
+
+; ----------------------------------------------------------------
+; SPECTRUM SPECIFIC and affects IX
+; These print routines from Cliffhanger in INPUT magazine.
+; I could have used ROM RSTs but don't like them!
+; "me" prints text string (data: IX) length "B" on the screen at position "HL", colour "A". 
+; increases ix and hl so can be called multiple times to print more text
+; "cl" clears the screen to black
+; "print" draws a single UDG at HL, colour A, glyph data at BC. Can also be used for simple Sprites
+; ----------------------------------------------------------------
+
+me    push bc
+      push af
+      ld a,(ix+0)
+      call asc
+      pop af
+      call print
+      inc hl
+      inc ix
+      pop bc
+      djnz me
+      ret
+
+asc   push hl        ; helper routine used by "me"
+      ld hl,15608    ; beginning of char set glyphs in ROM
+      ld de,8
+      ld b,31
+      sub b
+ash   add hl,de
+      dec a
+      jr nz,ash
+      push hl
+      pop bc
+      pop hl
+      ret
+
+cl    ld ix,16384    ; beginning of screen memory
+      ld hl,6912     ; length of screen memory incl. attributes
+      ld a,0
+clp   ld (ix+0),a
+      inc ix
+      dec hl
+      push hl
+      ld de,0
+      sbc hl,de
+      pop hl
+      jr nz,clp
+      ret
+
+print push af         ; helper used by "me" and extensively below
+      push hl         ; Draw single UDG at HL, colour a, gfx data at BC
+      push bc
+      push hl
+      pop de
+      ld a,d
+      cp 1
+      jr c,next
+      push de
+      ld de,1792
+      add hl,de
+      pop de
+      ld a,d
+      cp 1
+      jr z,next
+      push de
+      ld de,1792
+      add hl,de
+      pop de
+next  push de
+      ld de,16384
+      add hl,de
+      pop de
+      ld a,8
+      pop bc
+      push af
+rpt   ld a,(bc)   ; INPUT used 'rept' but we can't as it seems to be an assembler directive
+      ld (hl),a
+      inc h
+      inc bc
+      pop af
+      dec a
+      jr z,exit
+      push af
+      jr rpt
+exit  pop hl
+      pop af      ; passed in value of A
+      push de
+      ld de,22528 ; beginning of attributes area
+      add hl,de
+      pop de
+      ld (hl),a
+      push de
+      pop hl
+      ret
