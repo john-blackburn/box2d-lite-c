@@ -210,6 +210,8 @@ minusVec2:
 
 scaleVec2_a: ds 3
 scaleVec2:
+  push iy
+
   ld a,(ix+0)
   ld h,(ix+1)
   ld l,(ix+2)
@@ -238,6 +240,8 @@ scaleVec2:
   ld (ix+3),a
   ld (ix+4),h
   ld (ix+5),l
+  
+  pop iy
   ret
 
 ; ----------------------------------------------------------------
@@ -329,6 +333,8 @@ sumVec2:
   ld c,(iy+3)
   ld d,(iy+4)
   ld e,(iy+5)
+  
+  call f24add
 
   ld ix,sumVec2_res
   ld (ix+3),a
@@ -363,7 +369,7 @@ diffVec2:
   ld d,(iy+1)
   ld e,(iy+2)
 
-  call f24add
+  call f24sub
 
   push ix
   ld ix,diffVec2_res
@@ -379,6 +385,8 @@ diffVec2:
   ld c,(iy+3)
   ld d,(iy+4)
   ld e,(iy+5)
+  
+  call f24sub
 
   ld ix,diffVec2_res
   ld (ix+3),a
@@ -483,7 +491,7 @@ initMat22:
    push de
    ld hl,initMat22_c
    ld bc,3
-   ldir
+   ldir ; mat->col1.x = c;
    pop de
 
    push de
@@ -491,9 +499,9 @@ initMat22:
    ld de,6
    add hl,de
    ex de,hl
-   ld hl,initMat22_s
+   ld hl,initMat22_ns
    ld bc,3
-   ldir
+   ldir ; mat->col2.x = -s;
    pop de
 
    push de
@@ -501,9 +509,9 @@ initMat22:
    ld de,3
    add hl,de
    ex de,hl
-   ld hl,initMat22_ns
+   ld hl,initMat22_s
    ld bc,3
-   ldir
+   ldir ; mat->col1.y = s; 
    pop de
 
    ex de,hl
@@ -512,7 +520,7 @@ initMat22:
    ex de,hl
    ld hl,initMat22_c
    ld bc,3
-   ldir
+   ldir ; mat->col2.y = c;
    
    pop ix
    ret   
@@ -607,6 +615,8 @@ matmul:
 
 ; ----------------------------------------------------------------
 ; struct Mat22 matmulMM(struct Mat22 A, struct Mat22 B);
+; res.col1 = matmul(A, B.col1);
+; res.col2 = matmul(A, B.col2);
 ; ----------------------------------------------------------------
 
 matmulMM_A: ds Mat22
@@ -639,7 +649,7 @@ matmulMM:
    call matmul
 
    ld de,matmulMM_res+6
-   ld hl,matmul_v
+   ld hl,matmul_res
    ld bc,6
    ldir
 
@@ -4484,7 +4494,7 @@ Na2: inc	b
 ; I could have used ROM RSTs but don't like them!
 ; "me" prints text string (data: IX) length "B" on the screen at position "HL", colour "A". 
 ; increases ix and hl so can be called multiple times to print more text
-; "cl" clears the screen to black
+; "cl" clears the screen but doesn't change attributes
 ; "print" draws a single UDG at HL, colour A, glyph data at BC. Can also be used for simple Sprites
 ; ----------------------------------------------------------------
 
@@ -4514,7 +4524,7 @@ ash   add hl,de
       ret
 
 cl    ld ix,16384    ; beginning of screen memory
-      ld hl,6912     ; length of screen memory incl. attributes
+      ld hl,6144     ; length of screen memory excl. attributes
       ld a,0
 clp   ld (ix+0),a
       inc ix

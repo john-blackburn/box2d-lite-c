@@ -15,6 +15,8 @@
 
 #include "mathutils.h"
 
+extern int debug;
+
 struct Edges
 {
     char inEdge1;

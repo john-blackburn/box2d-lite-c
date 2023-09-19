@@ -1,16 +1,170 @@
 org 32768
 
-jp vectest
+jp stt
+
+contacts: ds 49*2
+
+bodyA: db 0,0,0, $3D,$F5,$C3, 0,0,0 ; position, rotation = (0 0.49) 0
+db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
+db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
+db $3F,0,0, $3F,0,0 ; width = 1 1
+
+; friction mass invmass I invI = 0.2 200 5e-3 33.3 0.03
+db $3C,$99,$9A  ;0.2
+db $46,$90,$00  ;200
+db $37,$47,$AE  ;5e-3
+db $44,$0A,$66  ;33.3
+db $39,$EB,$85  ;0.03
+
+bodyB:
+db 0,0,0, $C2,$40,$00, 0,0,0 ; position, rotation = (0 -10) 0
+db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
+db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
+db $45,$90,$00, $43,$40,$00 ; width = 100 20
+
+; friction mass invmass I invI = 0.2 inf 0 inf 0
+db $3C,$99,$9A  ;0.2
+db $7F,0,0 ; inf
+db 0,0,0
+db $7F,0,0 ; inf
+db 0,0,0
+
+stt:
+    ld hl,contacts
+    ld ix,bodyA
+    ld iy,bodyB
+    call Collide
+
+    call writeByte ; numContacts
+
+    ld ix,contacts
+    call writeVec2 ;  contacts[0].position
+
+    ld ix,contacts+Contact_normal
+    call writeVec2  ; contacts[0].normal
+
+    ld ix,contacts+Contact
+    call writeVec2 ; contacts[1].position
+
+    ld ix,contacts+Contact+Contact_normal
+    call writeVec2 ; contacts[1].normal
+
+    ret
+
+    call test_f24
+    call wat
+
+    call addtoVec2_test
+    call wat
+
+    call subfromVec2_test
+    call wat
+
+    call sumVec2_test
+    call wat
+
+    call diffVec2_test
+    call wat
+
+    call minusVec2_test
+    call wat
+
+    call scaleVec2_test
+    call wat
+
+    call scaledVec2_test
+    call wat
+
+    call Transpose_test
+    call wat
+
+    call initMat22_test
+    call wat
+
+    call matmul_test
+    call wat
+
+    call matmulMM_test
+    call wat
+
+    call Dot_test
+    call wat
+
+    call Crossvv_test
+    call wat
+
+    call Absv_test
+    call wat
+
+    call AbsM_test
+    call wat
+
+    call Flip_test
+    call wat
+
+    ret
+
+wat_cnt: db 0
+wat: 
+    ld a,(wat_cnt)
+    inc a
+    ld (wat_cnt),a
+	
+    ld hl,reslt
+    call u8toh
+
+    ld ix,reslt     ; string to print
+    ld hl,32*23 ; print pos from top-left
+    ld a,00111010b  ; ink 2, paper 7, not bright, not flash
+    ld b,2          ; no. chars to print
+    call me
+
+wat1:    
+    ld a,253   ; wait until S is pressed
+    in a,(254)
+    bit 1,a
+    jr nz,wat1
+	
+    call cl
+    ld hl,0
+    ld (writeAHL_pp),hl
+    ret
 
 ; ----------------------------------------------------------------
-; Unit test 1. 
+; convert a to hex string and store in HL
+; ----------------------------------------------------------------
+
+u8toh:
+        ld c,-16
+        call u8toh1
+        ld c,-1
+u8toh1: ld  b,'0'-1 ; 47
+u8toh2: inc b
+        add a,c
+        jr c,u8toh2
+        sub c
+
+        push af
+        ld a,b    ; if (a>=58) a+=7; (jump past if a<58)
+        cp 58     ; a=48 carry ... a=57 carry, a=58 no carry
+        jr c, u8toh3
+        add a,7     ; 65 - 58
+u8toh3: ld b,a
+        pop af
+
+        ld (hl),b               ; digit in b
+        inc hl
+        ret
+
+; ----------------------------------------------------------------
+; Basic test of f24 lib 
 ; (12*53-147)*0.5= 244.5
-; print answer to screen using "me"
+; print answer to screen using writeAHL
 ; ----------------------------------------------------------------
 
 reslt: ds 3  ; string to store the result
 
-stt:
+test_f24:
   ld a,12
 
   call u8tof24 ; result on AHL
@@ -42,28 +196,31 @@ stt:
 
   call f24sub
 
-  ld c,00111110b  ; 0 0111110 0000000000000000(0.5)
+  ld c,00111110b  ; 0 0111110 0000000000000000 (0.5)
   ld d,0
   ld e,0
  
   call f24mul
 
-  call f24tou8; convert to int and store in A
-
-  ld hl,reslt
-  call u8toa      ; result stored in "reslt" string
-
-  ld ix,reslt     ; string to print
-  ld hl,0         ; print pos from top-left
-  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,3          ; no. chars to print
-
-  call me         ; should print 244
-
-  ld bc,0         ; return 0 to BASIC
+  call writeAHL
 
   ret
 
+; ----------------------------------------------------------------
+; writeAHL
+; ----------------------------------------------------------------
+
+writeByte:
+  ld hl,reslt
+  call u8toh
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp) ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,2          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+  ret
+  
 writeAHL_pp: dw 0
 writeAHL:
 
@@ -71,12 +228,12 @@ writeAHL:
   push hl
 
   ld hl,reslt
-  call u8toa
+  call u8toh
 
   ld ix,reslt     ; string to print
   ld hl,(writeAHL_pp) ; print pos from top-left
   ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,3          ; no. chars to print
+  ld b,2          ; no. chars to print
   call me
   ld (writeAHL_pp),hl
 
@@ -86,12 +243,12 @@ writeAHL:
 
   ld a,h  
   ld hl,reslt
-  call u8toa
+  call u8toh
 
   ld ix,reslt     ; string to print
   ld hl,(writeAHL_pp)         ; print pos from top-left
   ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,3          ; no. chars to print
+  ld b,2          ; no. chars to print
   call me
   ld (writeAHL_pp),hl
 
@@ -99,12 +256,12 @@ writeAHL:
 
   ld a,l  
   ld hl,reslt
-  call u8toa
+  call u8toh
 
   ld ix,reslt     ; string to print
   ld hl,(writeAHL_pp)         ; print pos from top-left
   ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,3          ; no. chars to print
+  ld b,2          ; no. chars to print
   call me
   ld (writeAHL_pp),hl
     
@@ -113,17 +270,15 @@ writeAHL:
   ret
 
 ; ----------------------------------------------------------------
-; Unit test 2
 ; Test addtoVec2. Pass in vector1 and vector2, sum is in vector1
 ; result should be (2.0, 4.0) which is shown as
-; 064 000 000 065 000 000
+; 40 00 00 41 00 00
 ; ----------------------------------------------------------------
 
 vector1: db 00111111b, 0, 0,   01000000b, 0, 0 ; (1.0, 2.0)
 vector2: db 00111111b, 0, 0,   01000000b, 0, 0 ; (1.0, 2.0)
 
-vectest:
-  push iy
+addtoVec2_test:
   ld ix,vector1
 
   ld hl,vector2
@@ -139,38 +294,509 @@ vectest:
   
   call writeAHL
 
-;  call f24tou8
-
-;  ld hl,reslt
-;  call u8toa
-
-;  ld ix,reslt     ; text to print
-;  ld hl,0         ; print pos from top-left
-;  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-;  ld b,3          ; chars to print
-;  call me
-
-  ld ix,vector1
-
   ld a,(ix+3)  ; y
   ld h,(ix+4)
   ld l,(ix+5)
 
   call writeAHL
 
-;  call f24tou8
+  ret
 
-;  ld hl,reslt
-;  call u8toa
+; ----------------------------------------------------------------
+; test subfromVec2
+; ----------------------------------------------------------------
 
-;  ld ix,reslt
-;  ld hl,10
-;  ld a,00111001b
-;  ld b,3
-;  call me
+subfromVec2_test:
+  ld ix,vector2
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
 
-  pop iy
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld ix,vector1
+  ld (ix+0),40h; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),41h; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld hl,vector2
+  ld de,subfromVec2_other
+  ld bc,6
+  ldir
+
+  call subfromVec2 ; result in vec1: (2,4)-(4,2) = (-2,2)
+
+  ld a,(ix+0)  ; x=-2
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+
+  ld a,(ix+3)  ; y=2
+  ld h,(ix+4)
+  ld l,(ix+5)
+
+  call writeAHL
 
   ret
 
+; ----------------------------------------------------------------
+; writeVec2
+; ----------------------------------------------------------------
+
+writeVec2:
+  ld hl,0
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call writeAHL
+
+  ld hl,10
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+  
+  call writeAHL
+  ret
+  
+; ----------------------------------------------------------------
+; writeMat22
+; ----------------------------------------------------------------
+  
+writeMat22:
+  ld hl,0
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+
+  ld hl,32
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+  
+  call writeAHL
+
+  ld hl,10
+  ld (writeAHL_pp),hl
+  
+  ld a,(ix+Mat22_col2+0)
+  ld h,(ix+Mat22_col2+1)
+  ld l,(ix+Mat22_col2+2)
+  
+  call writeAHL
+
+  ld hl,42
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+Mat22_col2+3)
+  ld h,(ix+Mat22_col2+4)
+  ld l,(ix+Mat22_col2+5)
+  
+  call writeAHL
+  ret
+
+minusVec2_test:
+  ld ix,minusVec2_v
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  call minusVec2
+  
+  ld ix,minusVec2_res
+  call writeVec2
+  ret
+
+scaledVec2_test:
+  ld ix,scaledVec2_v
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld ix,scaledVec2_s 
+  ld (ix+0),$BE   ; -0.5
+  ld (ix+1),0
+  ld (ix+2),0
+
+  call scaledVec2
+  
+  ld ix,scaledVec2_res
+  call writeVec2
+  ret
+
+scaleVec2_test:
+  ld ix,scaleVec2_a
+  ld (ix+0),$BE   ; -0.5
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld ix,vector1
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  call scaleVec2
+  
+  call writeVec2
+  ret
+
+sumVec2_test:
+
+  ld ix,sumVec2_a
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),$BE; -0.5
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld ix,sumVec2_b
+  ld (ix+0),$42; 11.0
+  ld (ix+1),$60
+  ld (ix+2),0
+
+  ld (ix+3),41h; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  call sumVec2
+  
+  ld ix,sumVec2_res
+  call writeVec2
+  ret
+
+diffVec2_test:
+
+  ld ix,diffVec2_a
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),$BE; -0.5
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld ix,diffVec2_b
+  ld (ix+0),$42; 11.0
+  ld (ix+1),$60
+  ld (ix+2),0
+
+  ld (ix+3),41h; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  call diffVec2
+  
+  ld ix,diffVec2_res
+  call writeVec2
+  ret
+
+; ----------------------------------------------------------------
+; test Transpose
+; 2 -2  ->   2  4
+; 4 -1      -2 -1
+; ----------------------------------------------------------------
+
+Transpose_test:
+  ld ix,Transpose_mat
+  ld (ix+0),40h ; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+  
+  ld (ix+3),41h ; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld (ix+Mat22_col2+0),0xC0 ; -2.0
+  ld (ix+Mat22_col2+1),0
+  ld (ix+Mat22_col2+2),0
+
+  ld (ix+Mat22_col2+3),0xBF ; -1.0
+  ld (ix+Mat22_col2+4),0
+  ld (ix+Mat22_col2+5),0
+  
+  call Transpose
+  
+  ld ix,Transpose_res
+
+  call writeMat22
+
+  ret  
+
+; ----------------------------------------------------------------
+; test initMat22
+; angle = pi/6 = 30 deg  
+; sqrt(3)/2 -1/2
+; 1/2       sqrt(3)/2
+; ----------------------------------------------------------------
+
+mat: ds 12
+initMat22_test:
+  ld ix,initMat22_angle
+  ld (ix+0),$3E; pi/6
+  ld (ix+1),$0C
+  ld (ix+2),$15
+  
+  ld hl,mat
+  
+  call initMat22
+  
+  ld ix,mat
+  call writeMat22  
+
+  ret
+
+; ----------------------------------------------------------------
+; test matmul
+; 2 -2   * 4 = 4
+; 4 -0.5   2   15
+; ----------------------------------------------------------------
+
+matmul_test:
+  ld ix,matmul_A
+  ld (ix+0),40h ; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+  
+  ld (ix+3),41h ; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld (ix+Mat22_col2+0),0xC0 ; -2.0
+  ld (ix+Mat22_col2+1),0
+  ld (ix+Mat22_col2+2),0
+
+  ld (ix+Mat22_col2+3),0xBE ; -0.5
+  ld (ix+Mat22_col2+4),0
+  ld (ix+Mat22_col2+5),0
+  
+  ld ix,matmul_v
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  call matmul
+  
+  ld ix,matmul_res
+
+  call writeVec2
+  
+  ret
+
+; 2 -2     * 2 3  = 4 -16
+; 4 -0.5     0 11   8 6.5
+
+matmulMM_test:
+  
+  ld ix,matmulMM_A
+
+  ld (ix+0),$40 ; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+  
+  ld (ix+3),$41 ; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld (ix+Mat22_col2+0),$C0 ; -2.0
+  ld (ix+Mat22_col2+1),0
+  ld (ix+Mat22_col2+2),0
+
+  ld (ix+Mat22_col2+3),$BE ; -0.5
+  ld (ix+Mat22_col2+4),0
+  ld (ix+Mat22_col2+5),0
+  
+  ld ix,matmulMM_B
+  
+  ld (ix+0),$40 ; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+  
+  ld (ix+3),0 ; 0.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld (ix+Mat22_col2+0),$40 ; 3.0
+  ld (ix+Mat22_col2+1),$80
+  ld (ix+Mat22_col2+2),0
+
+  ld (ix+Mat22_col2+3),$42 ; 11
+  ld (ix+Mat22_col2+4),$60
+  ld (ix+Mat22_col2+5),0
+  
+  call matmulMM
+
+  ld ix,matmulMM_res
+  call writeMat22
+  
+  ret
+
+; (4,2).(3,11) = 12+22 = 34
+  
+Dot_test:
+
+  ld ix,Dot_a
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld ix,Dot_b
+  ld (ix+0),$40; 3.0
+  ld (ix+1),$80
+  ld (ix+2),0
+
+  ld (ix+3),$42; 11
+  ld (ix+4),$60
+  ld (ix+5),0
+  
+  call Dot
+
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+  ret
+
+; (4,2)x(11,3) = 12-22 = -10
+
+Crossvv_test:
+
+  ld ix,Crossvv_a
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),40h; 2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  ld ix,Crossvv_b
+  ld (ix+0),$42; 11
+  ld (ix+1),$60
+  ld (ix+2),0
+
+  ld (ix+3),$40; 3.0
+  ld (ix+4),$80
+  ld (ix+5),0
+  
+  call Crossvv
+
+  ld ix,Crossvv_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+  
+  ret
+
+Absv_test:
+
+  ld ix,Absv_a
+  ld (ix+0),41h; 4.0
+  ld (ix+1),0
+  ld (ix+2),0
+
+  ld (ix+3),$C0; -2.0
+  ld (ix+4),0
+  ld (ix+5),0
+
+  call Absv
+  
+  ld ix,Absv_res
+  call writeVec2
+  
+  ret
+  
+AbsM_test:
+
+  ld ix,AbsM_A
+
+  ld (ix+0),$40 ; 2.0
+  ld (ix+1),0
+  ld (ix+2),0
+  
+  ld (ix+3),$41 ; 4.0
+  ld (ix+4),0
+  ld (ix+5),0
+  
+  ld (ix+Mat22_col2+0),$C0 ; -2.0
+  ld (ix+Mat22_col2+1),0
+  ld (ix+Mat22_col2+2),0
+
+  ld (ix+Mat22_col2+3),$BE ; -0.5
+  ld (ix+Mat22_col2+4),0
+  ld (ix+Mat22_col2+5),0
+
+  call AbsM
+  
+  ld ix,AbsM_res
+  call writeMat22
+  ret
+
+; {1, 2, 3, 4} -> {3, 4, 1, 2}
+
+edges1: db 1,2,3,4  
+Flip_test:
+  ld ix,edges1
+  call Flip
+  
+  ld hl,0
+  ld (writeAHL_pp),hl
+
+  ld a,(edges1)
+  call writeByte
+
+  ld a,(edges1+1)
+  call writeByte
+
+  ld a,(edges1+2)
+  call writeByte
+
+  ld a,(edges1+3)
+  call writeByte
+  
+  ret
+
 include "b2d.z80"
+

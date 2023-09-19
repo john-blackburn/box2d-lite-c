@@ -53,11 +53,15 @@ int main()
         
     float timeStep=1.0f/60.0f;
     
+	debug=0;
     for (int it=0; it<100; it++)
     {
         Step(timeStep);
         printf("%f %f\n", crate.position.x, crate.position.y);
     }
+
+    debug=1;
+	Step(timeStep);
 
     return 0;
 }

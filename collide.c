@@ -22,8 +22,12 @@
 //   v3 ------ v4
 //        e3
 
+#include <stdio.h>
+
 #include "mathutils.h"
 #include "collide.h"
+
+int debug;
 
 enum Axis
 {
@@ -69,6 +73,8 @@ void Swap(char* a, char* b)
 
 // flip a feature pair in situ
 // Z80: IX=fp
+// { char inEdge1, char outEdge1, char inEdge2, char outEdge2 }
+// {1,2,3,4} -> {3, 4, 1, 2}
 void Flip(struct Edges *fp)
 {
 	Swap(&(fp->inEdge1), &(fp->inEdge2));
@@ -186,11 +192,30 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 	c[1].v = sumVec2(pos, matmul(Rot, c[1].v));
 }
 
+void writeBody(struct Body* body)
+{
+	printf("%13.5e %13.5e %13.5e\n", body->position.x, body->position.y, body->rotation);	
+	printf("%13.5e %13.5e %13.5e\n", body->velocity.x, body->velocity.y, body->angularVelocity);
+	
+    printf("%13.5e %13.5e\n", body->width.x, body->width.y);
+	
+	printf("%13.5e %13.5e %13.5e %13.5e %13.5e\n", body->friction, body->mass, body->invMass, body->I, body->invI);
+}
+
 // The normal points from A to B
 // Set the contacts provided based on supplied bodies. return number of contacts (might be zero)
 // in z80 contacts = HL, bodyA = IX, bodyB = IY
 int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 {
+	if (debug)
+	{
+        printf("bodyA\n");
+		writeBody(bodyA);
+        
+        printf("bodyB\n");
+		writeBody(bodyB);
+	}
+	
 	// Setup
 	struct Vec2 hA = scaledVec2(0.5f, bodyA->width);
 	struct Vec2 hB = scaledVec2(0.5f, bodyB->width);
@@ -377,6 +402,25 @@ int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 			if (axis == FACE_B_X || axis == FACE_B_Y)
 				Flip(&contacts[numContacts].feature);
 			++numContacts;
+		}
+	}
+
+    if (debug)
+	{
+        printf("numContacts=%d\n",numContacts);
+		for (int i=0; i<numContacts; i++)
+		{
+            struct Contact con=contacts[i];
+            printf("i=%d\n",i);
+			printf("%13.5e %13.5e\n", con.position.x, con.position.y);
+			printf("%13.5e %13.5e\n", con.normal.x, con.normal.y);
+	        printf("%13.5e %13.5e\n", con.r1.x, con.r1.y);
+			printf("%13.5e %13.5e\n", con.r2.x, con.r2.y);
+            printf("%13.5e\n", con.separation);
+			printf("%13.5e %13.5e %13.5e\n", con.Pn, con.Pt, con.Pnb);
+			printf("%13.5e %13.5e\n", con.massNormal, con.massTangent);
+			printf("%13.5e\n", con.bias);
+			printf("%d %d %d %d\n", con.feature.inEdge1, con.feature.outEdge1, con.feature.inEdge2, con.feature.outEdge2);
 		}
 	}
 
