@@ -1123,12 +1123,14 @@ ClipSegmentToLine4:
   add hl,bc
   
   ld de,diffVec2_a
+  ld bc,Vec2
   ldir
   
   push iy ; vIn
   pop hl
   
   ld de,diffVec2_b
+  ld bc,Vec2
   ldir
   
   call diffVec2
@@ -1641,12 +1643,14 @@ Collide_side ds 3
 Collide_clipPoints1 ds ClipVertex*2
 Collide_clipPoints2 ds ClipVertex*2
 Collide_numContacts ds 1
+Collide_contacts ds 2
 
 Collide:
 
     push ix
 	push iy
-    push hl ; contacts
+    
+    ld (Collide_contacts),hl
 
 ;	struct Vec2 hA = scaledVec2(0.5f, bodyA->width)
     push ix
@@ -1668,6 +1672,13 @@ Collide:
 
     call scaledVec2
 
+; debug code    
+    ld ix,scaledVec2_res
+    call writeVec2
+;    pop iy
+;    pop ix
+;    ret
+    
     ld hl,scaledVec2_res
     ld de,Collide_hA
     ld bc,Vec2
@@ -1949,34 +1960,33 @@ Collide:
     ld h,(ix+1)
     ld l,(ix+2)
     
-    ld c,0
-    ld d,0
-    ld e,0
-    
-    call f24cmp
-    
-    jr z,Collide1
+    bit 7,a ; if 0 its positive
+        
     ld a,0
-    ret nc
+    pop iy
+    pop ix
 
-Collide1:
+    ret z ; return if faceA.x positive
+    
+    push ix
+    push iy
+
     ld ix,Collide_faceA
     ld a,(ix+3)
     ld h,(ix+4)
     ld l,(ix+5)
     
-    ld c,0
-    ld d,0
-    ld e,0
-    
-    call f24cmp
-    
-    jr z,Collide2
+    bit 7,a
+        
     ld a,0
-    ret nc
-    
-Collide2:    
+    pop iy
+    pop ix
 
+    ret z ; return if faceA.y positive
+
+    push ix
+    push iy
+    
 ;	struct Vec2 faceB = diffVec2(Absv(dB), hB)
 ;   subfromVec2(&faceB, matmul(absCT, hA))
 
@@ -2034,36 +2044,35 @@ Collide2:
     ld l,(ix+2)
     pop ix
     
-    ld c,0
-    ld d,0
-    ld e,0
+    bit 7,a
     
-    call f24cmp
-    
-    jr z,Collide3
     ld a,0
-    ret nc
+    
+    pop iy
+    pop ix
+    
+    ret z
 
-Collide3:
+    push ix
+    push iy
+
     push ix
     ld ix,Collide_faceB
     ld a,(ix+3)
     ld h,(ix+4)
     ld l,(ix+5)
     pop ix
-    
-    ld c,0
-    ld d,0
-    ld e,0
-    
-    call f24cmp
-    
-    jr z,Collide4
-    ld a,0
-    ret nc
-    
-Collide4:
 
+    bit 7,a
+        
+    ld a,0
+    pop iy
+    pop ix
+    ret z
+
+    push ix
+    push iy
+    
 ;	axis = FACE_A_X
 ;	separation = faceA.x
 ;	normal = dA.x > 0.0f ? RotA.col1 : minusVec2(RotA.col1)
@@ -2982,8 +2991,14 @@ case_end:
     
     cp 2
     ld a,0
+
+    pop iy
+    pop ix
     
     ret c
+    
+    push ix
+    push iy
     
 ;	np = ClipSegmentToLine(clipPoints2, clipPoints1,  sideNormal, posSide, posEdge)
 
@@ -3010,8 +3025,13 @@ case_end:
     
     cp 2
     ld a,0
+    pop iy
+    pop ix
     
     ret c
+    
+    push ix
+    push iy
     
 ;		float separation = Dot(frontNormal, clipPoints2[i].v) - front
 ;
@@ -3044,7 +3064,7 @@ CollideLoop:
     
     ld hl,Collide_clipPoints2
     
-    pop bc
+    pop bc ; loop counter
     push bc
     ld a,b
     ld de,ClipVertex
@@ -3086,12 +3106,7 @@ CollideLoop:
     jp nc,Collide10
 Collide11:
 
-    pop hl; contacts
-    ld de,Contact
-    ld a,(Collide_numContacts)
-    call arrayIndex
-    push hl ; store pointer contacts[numContacts]
-    
+    ld hl,(Collide_contacts)
     ld de,Contact_separation
     add hl,de
     ex de,hl
@@ -3099,8 +3114,7 @@ Collide11:
     ld bc,3
     ldir
     
-    pop hl
-    push hl
+    ld hl,(Collide_contacts)
     ld de,Contact_normal
     add hl,de
     ex de,hl
@@ -3125,7 +3139,7 @@ Collide11:
     ld bc,Vec2
     ldir
 
-    push iy
+    push iy ; clipPoints2
     pop hl    
     ld de,diffVec2_a
     ld bc,Vec2
@@ -3133,24 +3147,20 @@ Collide11:
     
     call diffVec2
     
-    pop hl
-    push hl
-    
+    ld hl,(Collide_contacts)
     ld de,Contact_position
     add hl,de
     ex de,hl
     ld hl,diffVec2_res
     ld bc,Vec2
     ldir
-
-    pop hl
     
     ld de,Contact_feature
     add hl,de
     push hl ; store pointer contacts[numContacts].feature
     ex de,hl
     push iy
-    pop hl   ; clipPoints2[i]
+    pop hl   ; clipPoints2[i] stored earlier
     ld bc,ClipVertex_fp
     add hl,bc
     ld bc,Edges
@@ -3169,14 +3179,19 @@ Collide11:
 
 Collide12:
     
-    call Flip ; pass in ix
+    call Flip ; pass in ix = contacts[numContacts].feature
 
 Collide13:
     ld a,(Collide_numContacts)
     inc a
-    ld (Collide_numContacts),a    
+    ld (Collide_numContacts),a
     
 Collide10:    
+
+    ld hl,(Collide_contacts)
+    ld de,Contact
+    add hl,de
+    ld (Collide_contacts),hl
 
     pop bc
     ld a,b

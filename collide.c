@@ -126,6 +126,16 @@ int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Vec2 pos,
 								struct Mat22 Rot, struct Vec2 normal)
 {
+    
+    if (debug)
+    {
+        printf("ComputeIncidentEdge:\n");
+        printf("%13.5e %13.5e %13.5e %13.5e\n", h.x, h.y, pos.x, pos.y);
+        printf("%13.5e %13.5e\n", Rot.col1.x, Rot.col1.y);
+        printf("%13.5e %13.5e\n", Rot.col2.x, Rot.col2.y);
+        printf("%13.5e %13.5e\n", normal.x, normal.y);   
+    }
+    
 	// The normal is from the reference box. Convert it
 	// to the incident boxe's frame and flip sign.
 	struct Mat22 RotT = Transpose(Rot);
@@ -190,6 +200,16 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 
 	c[0].v = sumVec2(pos, matmul(Rot, c[0].v));
 	c[1].v = sumVec2(pos, matmul(Rot, c[1].v));
+    
+    if (debug)
+    {
+        for (int i=0; i<2; i++)
+        {
+            printf("%13.5e %13.5e\n", c[i].v.x, c[i].v.y);
+            printf("%d %d %d %d\n", c[i].fp.inEdge1, c[i].fp.outEdge1, c[i].fp.inEdge2, c[i].fp.outEdge2);
+        }
+    }
+
 }
 
 void writeBody(struct Body* body)

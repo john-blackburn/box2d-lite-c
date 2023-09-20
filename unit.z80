@@ -30,6 +30,57 @@ db $7F,0,0 ; inf
 db 0,0,0
 
 stt:
+    call test_f24 ; 1
+    call wat
+
+    call addtoVec2_test ; 2
+    call wat
+
+    call subfromVec2_test ; 3
+    call wat
+
+    call sumVec2_test ; 4
+    call wat
+
+    call diffVec2_test ; 5
+    call wat
+
+    call minusVec2_test ; 6
+    call wat
+
+    call scaleVec2_test ; 7
+    call wat
+
+    call scaledVec2_test ; 8
+    call wat
+
+    call Transpose_test ; 9
+    call wat
+
+    call initMat22_test ; A
+    call wat
+
+    call matmul_test ; B
+    call wat
+
+    call matmulMM_test ; C
+    call wat
+
+    call Dot_test ; D
+    call wat
+
+    call Crossvv_test ; E
+    call wat
+
+    call Absv_test ; F
+    call wat
+
+    call AbsM_test ; 10
+    call wat
+
+    call Flip_test ; 11
+    call wat
+
     ld hl,contacts
     ld ix,bodyA
     ld iy,bodyB
@@ -48,59 +99,6 @@ stt:
 
     ld ix,contacts+Contact+Contact_normal
     call writeVec2 ; contacts[1].normal
-
-    ret
-
-    call test_f24
-    call wat
-
-    call addtoVec2_test
-    call wat
-
-    call subfromVec2_test
-    call wat
-
-    call sumVec2_test
-    call wat
-
-    call diffVec2_test
-    call wat
-
-    call minusVec2_test
-    call wat
-
-    call scaleVec2_test
-    call wat
-
-    call scaledVec2_test
-    call wat
-
-    call Transpose_test
-    call wat
-
-    call initMat22_test
-    call wat
-
-    call matmul_test
-    call wat
-
-    call matmulMM_test
-    call wat
-
-    call Dot_test
-    call wat
-
-    call Crossvv_test
-    call wat
-
-    call Absv_test
-    call wat
-
-    call AbsM_test
-    call wat
-
-    call Flip_test
-    call wat
 
     ret
 
@@ -347,11 +345,16 @@ subfromVec2_test:
   ret
 
 ; ----------------------------------------------------------------
-; writeVec2
+; writeVec2. Write vec at ix on the next line down
 ; ----------------------------------------------------------------
 
 writeVec2:
-  ld hl,0
+  ld hl,(writeAHL_pp); move to start of next line
+  ld bc,32
+  add hl,bc
+  ld a,l
+  and 11100000b
+  ld l,a
   ld (writeAHL_pp),hl
 
   ld a,(ix+0)
@@ -360,7 +363,8 @@ writeVec2:
 
   call writeAHL
 
-  ld hl,10
+  ld hl,(writeAHL_pp)
+  inc hl
   ld (writeAHL_pp),hl
 
   ld a,(ix+3)
