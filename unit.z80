@@ -30,6 +30,7 @@ db $7F,0,0 ; inf
 db 0,0,0
 
 stt:
+    jp go
     call test_f24 ; 1
     call wat
 
@@ -81,7 +82,7 @@ stt:
     call Flip_test ; 11
     call wat
 
-    ld hl,contacts
+go: ld hl,contacts
     ld ix,bodyA
     ld iy,bodyB
     call Collide

@@ -1156,6 +1156,7 @@ ClipSegmentToLine4:
   pop hl
   
   ld de,sumVec2_a
+  ld bc,Vec2
   ldir
   
   call sumVec2
@@ -1303,6 +1304,11 @@ ComputeIncidentEdge:
 ; RotT = Transpose(Rot)
 
     push iy
+
+;    push ix    
+;    ld ix,ComputeIncidentEdge_h
+;    call writeVec2
+;    pop ix
 
     ld hl,ComputeIncidentEdge_Rot 
     ld de,Transpose_mat
@@ -1672,9 +1678,11 @@ Collide:
 
     call scaledVec2
 
-; debug code    
-    ld ix,scaledVec2_res
-    call writeVec2
+; debug code
+;    push ix    
+;    ld ix,scaledVec2_res
+;    call writeVec2
+;    pop ix
 ;    pop iy
 ;    pop ix
 ;    ret
@@ -3053,9 +3061,9 @@ case_end:
     ld a,0
     ld (Collide_numContacts),a
     
-    ld b,0
+    ld a,0
 CollideLoop:
-    push bc
+    push af
 
     ld hl,Collide_frontNormal
     ld de,Dot_a
@@ -3193,9 +3201,9 @@ Collide10:
     add hl,de
     ld (Collide_contacts),hl
 
-    pop bc
-    ld a,b
-    cp 1
+    pop af
+    inc a
+    cp 2
     jp nz, CollideLoop
    
     ld a,(Collide_numContacts)
