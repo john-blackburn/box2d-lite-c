@@ -2,7 +2,7 @@ org 32768
 
 jp stt
 
-contacts: ds 49*2
+contacts: ds 49*2 ; Contact*2
 
 bodyA: db 0,0,0, $3D,$F5,$C3, 0,0,0 ; position, rotation = (0 0.49) 0
 db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
@@ -28,6 +28,41 @@ db $7F,0,0 ; inf
 db 0,0,0
 db $7F,0,0 ; inf
 db 0,0,0
+
+CIE_h:
+db $44,$90,$00, $42,$40,$00 ; 50 10
+
+CIE_pos:
+db 0,0,0, $C2,$40,$00; 0 -10
+
+CIE_Rot:
+db $3F,0,0, 0,0,0  ; 1 0
+db 0,0,0, $3F,0,0  ; 0 1
+
+CIE_normal
+db 0,0,0, $BF,0,0 ; 0 -1
+
+CIE_c:
+ds 20; ClipVertex*2
+
+CSTL_vIn:
+db $44,$90,0, 0,0,0 ; v=50 0
+db 0,0,4,1 ; fp
+
+db $c4,$90,0, 0,0,0 ; v=-50 0
+db 0,0,1,2 ; fp
+
+CSTL_normal:
+db $BF,0,0, 0,0,0; -1 0
+
+CSTL_offset 
+db $3E,0,0 ; 0.5
+
+CSTL_clipEdge
+db 2
+
+CSTL_vOut: 
+ds 20; ClipVertex*2
 
 stt:
     jp go
@@ -82,7 +117,117 @@ stt:
     call Flip_test ; 11
     call wat
 
-go: ld hl,contacts
+
+    ld ix,CIE_c
+
+    ld hl,CIE_h
+    ld de,ComputeIncidentEdge_h
+    ld bc,Vec2
+    ldir
+    
+    ld hl,CIE_pos
+    ld de,ComputeIncidentEdge_pos
+    ld bc,Vec2
+    ldir
+
+    ld hl,CIE_Rot
+    ld de,ComputeIncidentEdge_Rot
+    ld bc,Mat22
+    ldir
+    
+    ld hl,CIE_normal
+    ld de,ComputeIncidentEdge_normal
+    ld bc,Vec2
+    ldir
+    
+    call ComputeIncidentEdge
+    
+    ld ix,CIE_c ; c[0].v
+    call writeVec2
+
+    ld a,(CIE_c+ClipVertex_fp); c[0].fp
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex_fp+1)
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex_fp+2)
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex_fp+3)
+    call writeByte
+
+    ld ix,CIE_c+ClipVertex ; c[1].v
+    call writeVec2
+
+    ld a,(CIE_c+ClipVertex+ClipVertex_fp); c[1].fp
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex+ClipVertex_fp+1)
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex+ClipVertex_fp+2)
+    call writeByte
+
+    ld a,(CIE_c+ClipVertex+ClipVertex_fp+3)
+    call writeByte
+    ret
+
+go: ld ix,CSTL_vOut
+    ld iy,CSTL_vIn
+
+    ld hl,CSTL_normal
+    ld de,ClipSegmentToLine_normal
+    ld bc,Vec2
+    ldir
+
+    ld hl,CSTL_offset
+    ld de,ClipSegmentToLine_offset
+    ld bc,3
+    ldir
+    
+    ld a,(CSTL_clipEdge)
+    ld (ClipSegmentToLine_clipEdge),a
+    
+    call ClipSegmentToLine
+
+    call writeByte
+
+    ld ix,CSTL_vOut ; vOut[0].v
+    call writeVec2
+
+    ld a,(CSTL_vOut+ClipVertex_fp); vOut[0].fp
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex_fp+1)
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex_fp+2)
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex_fp+3)
+    call writeByte
+
+    ld ix,CSTL_vOut+ClipVertex ; vOut[1].v
+    call writeVec2
+
+    ld a,(CSTL_vOut+ClipVertex+ClipVertex_fp); vOut[1].fp
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex+ClipVertex_fp+1)
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex+ClipVertex_fp+2)
+    call writeByte
+
+    ld a,(CSTL_vOut+ClipVertex+ClipVertex_fp+3)
+    call writeByte
+    
+    ret
+
+
+
+    ld hl,contacts
     ld ix,bodyA
     ld iy,bodyB
     call Collide

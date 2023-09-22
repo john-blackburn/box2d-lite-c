@@ -86,12 +86,32 @@ void Flip(struct Edges *fp)
 int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 					  struct Vec2 normal, float offset, char clipEdge)
 {
+    
+    if (debug)
+    {
+        printf("ClipSegmentToLine:\n");
+        for (int i=0;i<2;i++)
+        {
+            printf("%13.5e %13.5e\n", vIn[i].v.x, vIn[i].v.y);
+            printf("%d %d %d %d\n", vIn[i].fp.inEdge1, vIn[i].fp.outEdge1, vIn[i].fp.inEdge2, vIn[i].fp.outEdge2);
+        }
+        printf("%13.5e %13.5e\n", normal.x, normal.y);
+        printf("%13.5e\n", offset);
+        printf("%d\n", clipEdge);
+    }
+    
 	// Start with no output points
 	int numOut = 0;
 
 	// Calculate the distance of end points to the line
 	float distance0 = Dot(normal, vIn[0].v) - offset;
 	float distance1 = Dot(normal, vIn[1].v) - offset;
+    
+    if (debug)
+    {
+        printf("distance0=%13.5e\n", distance0);
+        printf("distance1=%13.5e\n", distance1);
+    }
 
 	// If the points are behind the plane
 	if (distance0 <= 0.0f) vOut[numOut++] = vIn[0];
@@ -118,6 +138,16 @@ int ClipSegmentToLine(struct ClipVertex vOut[2], struct ClipVertex vIn[2],
 		++numOut;
 	}
 
+    if (debug)
+    {
+        printf("numOut=%d\n", numOut);
+        for (int i=0; i<numOut; i++)
+        {
+            printf("%13.5e %13.5e\n", vOut[i].v.x, vOut[i].v.y);
+            printf("%d %d %d %d\n", vOut[i].fp.inEdge1, vOut[i].fp.outEdge1, vOut[i].fp.inEdge2, vOut[i].fp.outEdge2);
+        }
+    }
+
 	return numOut;
 }
 
@@ -140,6 +170,12 @@ static void ComputeIncidentEdge(struct ClipVertex c[2], struct Vec2 h, struct Ve
 	// to the incident boxe's frame and flip sign.
 	struct Mat22 RotT = Transpose(Rot);
 	struct Vec2 n = minusVec2(matmul(RotT, normal));
+    
+    if (debug)
+    {        
+        printf("n=%13.5e %13.5e\n", n.x, n.y);           
+    }
+    
    	struct Vec2 nAbs = Absv(n);
 
 	if (nAbs.x > nAbs.y)

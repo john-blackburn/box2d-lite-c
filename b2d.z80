@@ -975,7 +975,7 @@ ClipSegmentToLine2:
   call arrayIndex ; hl = vOut[numOut]
 
   ex de,hl 
-  push ix
+  push iy          ; vIn
   pop hl
   ld bc,ClipVertex
   ldir  
@@ -1116,7 +1116,7 @@ ClipSegmentToLine4:
   
 ; vOut[numOut].v = sumVec2(vIn[0].v, scaledVec2(interp , diffVec2(vIn[1].v, vIn[0].v)));
 
-  push iy
+  push iy ; vIn
   pop hl
   
   ld bc,ClipVertex
@@ -1197,6 +1197,7 @@ ClipSegmentToLine4:
 
   push ix
   pop hl
+
   pop af
   ld de,ClipVertex
   call arrayIndex
@@ -1241,6 +1242,7 @@ ClipSegmentToLineElse:
 
   push ix
   pop hl
+
   pop af
   ld de,ClipVertex
   call arrayIndex
@@ -1475,7 +1477,7 @@ ComputeIncidentEdge_else:
     ld d,0
     ld e,0
     
-    call f24cmp
+    call f24cmp; skip if n.y <= 0.0
     
     jr c,ComputeIncidentEdge_else2
     jr z,ComputeIncidentEdge_else2
@@ -1504,6 +1506,7 @@ ComputeIncidentEdge_else:
     
     ld (ix+ClipVertex+ClipVertex_fp+Edges_inEdge2),EDGE1
     ld (ix+ClipVertex+ClipVertex_fp+Edges_outEdge2),EDGE2
+    jr ComputeIncidentEdge_endif
     
 ComputeIncidentEdge_else2:
 
