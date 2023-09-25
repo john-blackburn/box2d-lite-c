@@ -1,33 +1,74 @@
 org 32768
 
-jp stt
+;    jp go
+    call test_f24 ;         1: 46E900
+    call wat
 
-contacts: ds 49*2 ; Contact*2
+    call addtoVec2_test ;   2: 400000 410000
+    call wat
 
-bodyA: db 0,0,0, $3D,$F5,$C3, 0,0,0 ; position, rotation = (0 0.49) 0
-db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
-db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
-db $3F,0,0, $3F,0,0 ; width = 1 1
+    call subfromVec2_test ; 3: C00000 400000
+    call wat
 
-; friction mass invmass I invI = 0.2 200 5e-3 33.3 0.03
-db $3C,$99,$9A  ;0.2
-db $46,$90,$00  ;200
-db $37,$47,$AE  ;5e-3
-db $44,$0A,$66  ;33.3
-db $39,$EB,$85  ;0.03
+    call sumVec2_test ;     4: 42E000 40C000
+    call wat
 
-bodyB:
-db 0,0,0, $C2,$40,$00, 0,0,0 ; position, rotation = (0 -10) 0
-db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
-db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
-db $45,$90,$00, $43,$40,$00 ; width = 100 20
+    call diffVec2_test ;    5: C1C000 C12000
+    call wat
 
-; friction mass invmass I invI = 0.2 inf 0 inf 0
-db $3C,$99,$9A  ;0.2
-db $7F,0,0 ; inf
-db 0,0,0
-db $7F,0,0 ; inf
-db 0,0,0
+    call minusVec2_test ;   6: C10000 C00000
+    call wat
+
+    call scaleVec2_test ;   7: C00000 BF0000
+    call wat
+
+    call scaledVec2_test ;  8: C00000 BF0000
+    call wat
+
+    call Transpose_test ;   9: 400000 410000 / C00000 BF0000
+    call wat
+
+    call initMat22_test ;   A: 3EBB67 BDFFFD / 3DFFFD 3EBB67
+    call wat
+
+    call matmul_test ;      B: 410000 42E000
+    call wat
+
+    call matmulMM_test ;    C: 410000 C30000 / 420000 41A000
+    call wat
+
+    call Dot_test ;         D: 441000
+    call wat
+
+    call Crossvv_test ;     E: C24000
+    call wat
+
+    call Absv_test ;        F: 410000 400000
+    call wat
+
+    call AbsM_test ;       10: 400000 400000 / 410000 3E0000
+    call wat
+
+    call Flip_test ;       11: 03 04 01 02
+    call wat
+    
+    call ComputeIncidentEdge_test ; 12:  449000 800000 xxxx0401 / C49000 800000 xxxx0102
+    call wat
+    
+go: call ClipSegmentToLine_test ;   13: 02 / 449000 000000 00 00 04 01/ BDFF80 000000 00 02 01 00
+    call wat
+
+    call ClipSegmentToLine_test2 ;  14: 02 / BE0000 000000 00 02 01 00/ 3E0000 000000 04 00 00 01
+    call wat
+    
+    call Collide_test ; 15: 02 / BDFF80 B847A0 / 000000 BF0000 00 02 01 00
+    call wat;                    3E0000 B847A0 / 000000 BF0000 04 00 00 01
+
+    ret
+
+; ----------------------------------------------
+; ComputeIncidentEdge_test
+; ----------------------------------------------
 
 CIE_h:
 db $44,$90,$00, $42,$40,$00 ; 50 10
@@ -44,79 +85,8 @@ db 0,0,0, $BF,0,0 ; 0 -1
 
 CIE_c:
 ds 20; ClipVertex*2
-
-CSTL_vIn:
-db $44,$90,0, 0,0,0 ; v=50 0
-db 0,0,4,1 ; fp
-
-db $c4,$90,0, 0,0,0 ; v=-50 0
-db 0,0,1,2 ; fp
-
-CSTL_normal:
-db $BF,0,0, 0,0,0; -1 0
-
-CSTL_offset 
-db $3E,0,0 ; 0.5
-
-CSTL_clipEdge
-db 2
-
-CSTL_vOut: 
-ds 20; ClipVertex*2
-
-stt:
-    jp go
-    call test_f24 ; 1
-    call wat
-
-    call addtoVec2_test ; 2
-    call wat
-
-    call subfromVec2_test ; 3
-    call wat
-
-    call sumVec2_test ; 4
-    call wat
-
-    call diffVec2_test ; 5
-    call wat
-
-    call minusVec2_test ; 6
-    call wat
-
-    call scaleVec2_test ; 7
-    call wat
-
-    call scaledVec2_test ; 8
-    call wat
-
-    call Transpose_test ; 9
-    call wat
-
-    call initMat22_test ; A
-    call wat
-
-    call matmul_test ; B
-    call wat
-
-    call matmulMM_test ; C
-    call wat
-
-    call Dot_test ; D
-    call wat
-
-    call Crossvv_test ; E
-    call wat
-
-    call Absv_test ; F
-    call wat
-
-    call AbsM_test ; 10
-    call wat
-
-    call Flip_test ; 11
-    call wat
-
+    
+ComputeIncidentEdge_test:
 
     ld ix,CIE_c
 
@@ -173,7 +143,32 @@ stt:
     call writeByte
     ret
 
-go: ld ix,CSTL_vOut
+; ---------------------------------------------------------
+; ClipSegmentToLine_test
+; ---------------------------------------------------------
+
+CSTL_vIn:
+db $44,$90,0, 0,0,0 ; v=50 0
+db 0,0,4,1 ; fp
+
+db $c4,$90,0, 0,0,0 ; v=-50 0
+db 0,0,1,2 ; fp
+
+CSTL_normal:
+db $BF,0,0, 0,0,0; -1 0
+
+CSTL_offset 
+db $3E,0,0 ; 0.5
+
+CSTL_clipEdge
+db 2
+
+CSTL_vOut: 
+ds 20; ClipVertex*2
+
+ClipSegmentToLine_test:
+
+    ld ix,CSTL_vOut
     ld iy,CSTL_vIn
 
     ld hl,CSTL_normal
@@ -189,7 +184,7 @@ go: ld ix,CSTL_vOut
     ld a,(CSTL_clipEdge)
     ld (ClipSegmentToLine_clipEdge),a
     
-    call ClipSegmentToLine
+CSTL1: call ClipSegmentToLine
 
     call writeByte
 
@@ -225,11 +220,84 @@ go: ld ix,CSTL_vOut
     
     ret
 
+; ---------------------------------------------------------
+; ClipSegmentToLine_test2
+; ---------------------------------------------------------
 
+CSTL_vIn2:
+db $44,$90,0, 0,0,0 ; v=50 0
+db 0,0,4,1 ; fp
+
+db $be,$00,0, 0,0,0 ; v=-0.5 0
+db 0,2,1,0 ; fp
+
+CSTL_normal2:
+db $3F,0,0, 0,0,0; 1 0
+
+CSTL_offset2 
+db $3E,0,0 ; 0.5
+
+CSTL_clipEdge2
+db 4
+
+ClipSegmentToLine_test2:
+    ld ix,CSTL_vOut
+    ld iy,CSTL_vIn2
+
+    ld hl,CSTL_normal2
+    ld de,ClipSegmentToLine_normal
+    ld bc,Vec2
+    ldir
+
+    ld hl,CSTL_offset2
+    ld de,ClipSegmentToLine_offset
+    ld bc,3
+    ldir
+    
+    ld a,(CSTL_clipEdge2)
+    ld (ClipSegmentToLine_clipEdge),a
+    
+    jp CSTL1
+
+    ret
+
+; --------------------------------------------------------
+; Collide_test
+; --------------------------------------------------------
+
+contacts: ds 49*2 ; Contact*2
+
+bodyA: db 0,0,0, $3D,$F5,$C3, 0,0,0 ; position, rotation = (0 0.49) 0
+db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
+db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
+db $3F,0,0, $3F,0,0 ; width = 1 1
+
+; friction mass invmass I invI = 0.2 200 5e-3 33.3 0.03
+db $3C,$99,$9A  ;0.2
+db $46,$90,$00  ;200
+db $37,$47,$AE  ;5e-3
+db $44,$0A,$66  ;33.3
+db $39,$EB,$85  ;0.03
+
+bodyB:
+db 0,0,0, $C2,$40,$00, 0,0,0 ; position, rotation = (0 -10) 0
+db 0,0,0, 0,0,0, 0,0,0 ; vel, angvel =  (0 0) 0
+db 0,0,0, 0,0,0, 0,0,0 ; force torque = (0 0) 0
+db $45,$90,$00, $43,$40,$00 ; width = 100 20
+
+; friction mass invmass I invI = 0.2 inf 0 inf 0
+db $3C,$99,$9A  ;0.2
+db $7F,0,0 ; inf
+db 0,0,0
+db $7F,0,0 ; inf
+db 0,0,0
+
+Collide_test:
 
     ld hl,contacts
     ld ix,bodyA
     ld iy,bodyB
+    
     call Collide
 
     call writeByte ; numContacts
@@ -240,65 +308,37 @@ go: ld ix,CSTL_vOut
     ld ix,contacts+Contact_normal
     call writeVec2  ; contacts[0].normal
 
+    ld a,(contacts+Contact_feature) ; contacts[0].feature
+    call writeByte
+
+    ld a,(contacts+Contact_feature+1)
+    call writeByte
+
+    ld a,(contacts+Contact_feature+2)
+    call writeByte
+
+    ld a,(contacts+Contact_feature+3)
+    call writeByte
+
     ld ix,contacts+Contact
     call writeVec2 ; contacts[1].position
 
     ld ix,contacts+Contact+Contact_normal
     call writeVec2 ; contacts[1].normal
 
+    ld a,(contacts+Contact+Contact_feature) ; contacts[1].feature
+    call writeByte
+
+    ld a,(contacts+Contact+Contact_feature+1)
+    call writeByte
+
+    ld a,(contacts+Contact+Contact_feature+2)
+    call writeByte
+
+    ld a,(contacts+Contact+Contact_feature+3)
+    call writeByte
+
     ret
-
-wat_cnt: db 0
-wat: 
-    ld a,(wat_cnt)
-    inc a
-    ld (wat_cnt),a
-	
-    ld hl,reslt
-    call u8toh
-
-    ld ix,reslt     ; string to print
-    ld hl,32*23 ; print pos from top-left
-    ld a,00111010b  ; ink 2, paper 7, not bright, not flash
-    ld b,2          ; no. chars to print
-    call me
-
-wat1:    
-    ld a,253   ; wait until S is pressed
-    in a,(254)
-    bit 1,a
-    jr nz,wat1
-	
-    call cl
-    ld hl,0
-    ld (writeAHL_pp),hl
-    ret
-
-; ----------------------------------------------------------------
-; convert a to hex string and store in HL
-; ----------------------------------------------------------------
-
-u8toh:
-        ld c,-16
-        call u8toh1
-        ld c,-1
-u8toh1: ld  b,'0'-1 ; 47
-u8toh2: inc b
-        add a,c
-        jr c,u8toh2
-        sub c
-
-        push af
-        ld a,b    ; if (a>=58) a+=7; (jump past if a<58)
-        cp 58     ; a=48 carry ... a=57 carry, a=58 no carry
-        jr c, u8toh3
-        add a,7     ; 65 - 58
-u8toh3: ld b,a
-        pop af
-
-        ld (hl),b               ; digit in b
-        inc hl
-        ret
 
 ; ----------------------------------------------------------------
 ; Basic test of f24 lib 
@@ -348,69 +388,6 @@ test_f24:
 
   call writeAHL
 
-  ret
-
-; ----------------------------------------------------------------
-; writeAHL
-; ----------------------------------------------------------------
-
-writeByte:
-  ld hl,reslt
-  call u8toh
-  ld ix,reslt     ; string to print
-  ld hl,(writeAHL_pp) ; print pos from top-left
-  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,2          ; no. chars to print
-  call me
-  ld (writeAHL_pp),hl
-  ret
-  
-writeAHL_pp: dw 0
-writeAHL:
-
-  push ix
-  push hl
-
-  ld hl,reslt
-  call u8toh
-
-  ld ix,reslt     ; string to print
-  ld hl,(writeAHL_pp) ; print pos from top-left
-  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,2          ; no. chars to print
-  call me
-  ld (writeAHL_pp),hl
-
-  pop hl
-
-  push hl
-
-  ld a,h  
-  ld hl,reslt
-  call u8toh
-
-  ld ix,reslt     ; string to print
-  ld hl,(writeAHL_pp)         ; print pos from top-left
-  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,2          ; no. chars to print
-  call me
-  ld (writeAHL_pp),hl
-
-  pop hl
-
-  ld a,l  
-  ld hl,reslt
-  call u8toh
-
-  ld ix,reslt     ; string to print
-  ld hl,(writeAHL_pp)         ; print pos from top-left
-  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
-  ld b,2          ; no. chars to print
-  call me
-  ld (writeAHL_pp),hl
-    
-  pop ix
-  
   ret
 
 ; ----------------------------------------------------------------
@@ -491,76 +468,8 @@ subfromVec2_test:
   ret
 
 ; ----------------------------------------------------------------
-; writeVec2. Write vec at ix on the next line down
+; minusVec2_test
 ; ----------------------------------------------------------------
-
-writeVec2:
-  ld hl,(writeAHL_pp); move to start of next line
-  ld bc,32
-  add hl,bc
-  ld a,l
-  and 11100000b
-  ld l,a
-  ld (writeAHL_pp),hl
-
-  ld a,(ix+0)
-  ld h,(ix+1)
-  ld l,(ix+2)
-
-  call writeAHL
-
-  ld hl,(writeAHL_pp)
-  inc hl
-  ld (writeAHL_pp),hl
-
-  ld a,(ix+3)
-  ld h,(ix+4)
-  ld l,(ix+5)
-  
-  call writeAHL
-  ret
-  
-; ----------------------------------------------------------------
-; writeMat22
-; ----------------------------------------------------------------
-  
-writeMat22:
-  ld hl,0
-  ld (writeAHL_pp),hl
-
-  ld a,(ix+0)
-  ld h,(ix+1)
-  ld l,(ix+2)
-  
-  call writeAHL
-
-  ld hl,32
-  ld (writeAHL_pp),hl
-
-  ld a,(ix+3)
-  ld h,(ix+4)
-  ld l,(ix+5)
-  
-  call writeAHL
-
-  ld hl,10
-  ld (writeAHL_pp),hl
-  
-  ld a,(ix+Mat22_col2+0)
-  ld h,(ix+Mat22_col2+1)
-  ld l,(ix+Mat22_col2+2)
-  
-  call writeAHL
-
-  ld hl,42
-  ld (writeAHL_pp),hl
-
-  ld a,(ix+Mat22_col2+3)
-  ld h,(ix+Mat22_col2+4)
-  ld l,(ix+Mat22_col2+5)
-  
-  call writeAHL
-  ret
 
 minusVec2_test:
   ld ix,minusVec2_v
@@ -577,6 +486,10 @@ minusVec2_test:
   ld ix,minusVec2_res
   call writeVec2
   ret
+
+; ----------------------------------------------------------------
+; scaledVec2_test
+; ----------------------------------------------------------------
 
 scaledVec2_test:
   ld ix,scaledVec2_v
@@ -599,6 +512,10 @@ scaledVec2_test:
   call writeVec2
   ret
 
+; ----------------------------------------------------------------
+; scaleVec2_test
+; ----------------------------------------------------------------
+
 scaleVec2_test:
   ld ix,scaleVec2_a
   ld (ix+0),$BE   ; -0.5
@@ -618,6 +535,10 @@ scaleVec2_test:
   
   call writeVec2
   ret
+
+; ----------------------------------------------------------------
+; sumVec2_test
+; ----------------------------------------------------------------
 
 sumVec2_test:
 
@@ -644,6 +565,10 @@ sumVec2_test:
   ld ix,sumVec2_res
   call writeVec2
   ret
+
+; ----------------------------------------------------------------
+; diffVec2_test
+; ----------------------------------------------------------------
 
 diffVec2_test:
 
@@ -767,8 +692,11 @@ matmul_test:
   
   ret
 
+; ----------------------------------------------------------------
+; matmulMM_test
 ; 2 -2     * 2 3  = 4 -16
 ; 4 -0.5     0 11   8 6.5
+; ----------------------------------------------------------------
 
 matmulMM_test:
   
@@ -815,7 +743,10 @@ matmulMM_test:
   
   ret
 
+; ----------------------------------------------------------------
+; Dot_test
 ; (4,2).(3,11) = 12+22 = 34
+; ----------------------------------------------------------------
   
 Dot_test:
 
@@ -847,7 +778,10 @@ Dot_test:
   call writeAHL
   ret
 
+; ----------------------------------------------------------------
+; Crossvv_test
 ; (4,2)x(11,3) = 12-22 = -10
+; ----------------------------------------------------------------
 
 Crossvv_test:
 
@@ -880,6 +814,10 @@ Crossvv_test:
   
   ret
 
+; ----------------------------------------------------------------
+; Absv_test
+; ----------------------------------------------------------------
+
 Absv_test:
 
   ld ix,Absv_a
@@ -897,6 +835,10 @@ Absv_test:
   call writeVec2
   
   ret
+
+; ----------------------------------------------------------------
+; AbsM_test
+; ----------------------------------------------------------------
   
 AbsM_test:
 
@@ -924,7 +866,10 @@ AbsM_test:
   call writeMat22
   ret
 
+; ----------------------------------------------------------------
+; Flip_test
 ; {1, 2, 3, 4} -> {3, 4, 1, 2}
+; ----------------------------------------------------------------
 
 edges1: db 1,2,3,4  
 Flip_test:
@@ -945,6 +890,175 @@ Flip_test:
 
   ld a,(edges1+3)
   call writeByte
+  
+  ret
+
+; ----------------------------------------------------------
+; wat pause until S key pressed
+; ----------------------------------------------------------
+
+wat_cnt: db 0
+wat: 
+    ld a,(wat_cnt)
+    inc a
+    ld (wat_cnt),a
+	
+    ld hl,reslt
+    call u8toh
+
+    ld ix,reslt     ; string to print
+    ld hl,32*23 ; print pos from top-left
+    ld a,00111010b  ; ink 2, paper 7, not bright, not flash
+    ld b,2          ; no. chars to print
+    call me
+
+wat1:    
+    ld a,253   ; wait until S is pressed
+    in a,(254)
+    bit 1,a
+    jr nz,wat1
+	
+    call cl
+    ld hl,0
+    ld (writeAHL_pp),hl
+    ret
+
+; ----------------------------------------------------------------
+; writeVec2. Write vec at ix on the next line down
+; ----------------------------------------------------------------
+
+writeVec2:
+  ld hl,(writeAHL_pp); move to start of next line
+  ld bc,32
+  add hl,bc
+  ld a,l
+  and 11100000b
+  ld l,a
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call writeAHL
+
+  ld hl,(writeAHL_pp)
+  inc hl
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+  
+  call writeAHL
+  ret
+  
+; ----------------------------------------------------------------
+; writeMat22
+; ----------------------------------------------------------------
+  
+writeMat22:
+  ld hl,0
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call writeAHL
+
+  ld hl,32
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+3)
+  ld h,(ix+4)
+  ld l,(ix+5)
+  
+  call writeAHL
+
+  ld hl,10
+  ld (writeAHL_pp),hl
+  
+  ld a,(ix+Mat22_col2+0)
+  ld h,(ix+Mat22_col2+1)
+  ld l,(ix+Mat22_col2+2)
+  
+  call writeAHL
+
+  ld hl,42
+  ld (writeAHL_pp),hl
+
+  ld a,(ix+Mat22_col2+3)
+  ld h,(ix+Mat22_col2+4)
+  ld l,(ix+Mat22_col2+5)
+  
+  call writeAHL
+  ret
+
+; ----------------------------------------------------------------
+; writeByte. Write single integer byte
+; ----------------------------------------------------------------
+
+writeByte:
+  ld hl,reslt
+  call u8toh
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp) ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,2          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+  ret
+
+; ----------------------------------------------------------------
+; writeAHL. write f24 float
+; ----------------------------------------------------------------
+  
+writeAHL_pp: dw 0
+writeAHL:
+
+  push ix
+  push hl
+
+  ld hl,reslt
+  call u8toh
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp) ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,2          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+
+  pop hl
+
+  push hl
+
+  ld a,h  
+  ld hl,reslt
+  call u8toh
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp)         ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,2          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+
+  pop hl
+
+  ld a,l  
+  ld hl,reslt
+  call u8toh
+
+  ld ix,reslt     ; string to print
+  ld hl,(writeAHL_pp)         ; print pos from top-left
+  ld a,00111001b  ; ink 1, paper 7, not bright, not flash
+  ld b,2          ; no. chars to print
+  call me
+  ld (writeAHL_pp),hl
+    
+  pop ix
   
   ret
 

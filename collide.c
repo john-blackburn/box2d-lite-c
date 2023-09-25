@@ -347,6 +347,9 @@ int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 		normal = dB.y > 0.0f ? RotB.col2 : minusVec2(RotB.col2);
 	}
 
+    if (debug)
+        printf("collide axis=%d\n",axis);
+
 	// Setup clipping plane data based on the separating axis
 	struct Vec2 frontNormal, sideNormal;
 	struct ClipVertex incidentEdge[2];
@@ -463,7 +466,7 @@ int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
 
     if (debug)
 	{
-        printf("numContacts=%d\n",numContacts);
+        printf("collide numContacts=%d\n",numContacts);
 		for (int i=0; i<numContacts; i++)
 		{
             struct Contact con=contacts[i];

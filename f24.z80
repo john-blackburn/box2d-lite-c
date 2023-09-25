@@ -1,0 +1,1278 @@
+; ----------------------------------------------------------------
+; f24 library from z80float (https://github.com/Zeda/z80float/tree/master/f24)
+; These routines do not affect IX or IY, but will clobber everything else!
+; slightly adapted from original for ZX Spin assembler, only a subset of routines here:
+; no trig (except sin and cos), no exp, log, pow, amean, geomean, bg, rand, sqrt
+; no special mul or div
+; I fixed f24cos so cos(0)=1, not 0 as previously
+; ----------------------------------------------------------------
+
+; --------------------------------------------------------------------------
+; f24add
+; --------------------------------------------------------------------------
+
+f24add:
+;AHL + CDE ==> AHL
+;Destroys BC,DE
+;
+;save A
+  ld b,a
+
+;check for special values
+  and $7F
+  jr nz,L1
+return_CDE:
+  ld a,c
+  ex de,hl
+  ret
+L1:
+  inc a
+  jp m,f24add_op1_inf_nan
+
+  ld a,c
+;check for special values
+  and $7F
+  jp z,return_exp_b
+
+  inc a
+  jp m,return_CDE
+
+
+  ld a,b
+  xor c
+  jp m,f24add_subtract
+;we need to add
+
+  call f24add_reorder
+  jr z,f24add_add_same_exp
+  ret nc
+  push bc
+  call rshift_1DE
+  sla b
+  adc hl,de
+  ;if carry is reset, then we are all good :)
+  pop de
+  ld a,d
+  ret nc
+;otherwise, we need to increment the sign and see if it overflows to inf
+  and $7F
+  cp $7E
+  ld a,d
+  jr z,f24_return_inf
+  inc a
+
+;we also need to shift a 0 down into the HL
+  srl h
+  rr l
+  ret nc
+  inc hl
+  ret
+
+f24add_add_same_exp:
+  ld a,b
+  and $7F
+  cp $7E
+  ld a,b
+  jr z,f24_return_inf
+  inc a
+  add hl,de
+  rr h
+  rr l
+  ret nc
+  inc l
+  ret nz
+  inc h
+  ret nz
+  inc a
+  ret
+
+f24_return_inf:
+  or %01111111
+  ld hl,0
+  ret
+
+
+f24add_subtract:
+  call f24add_reorder
+  jr z,f24add_subtract_same_exp
+  ret nc
+  push bc
+  call rshift_1DE
+  sub c
+  ld c,a
+  ld a,0
+  sbc a,b
+  ld b,a
+  sbc hl,de
+  ;if carry is not set, then we are all good :)
+  pop de
+  ld a,d
+  ret nc
+
+  ;otherwise, the implicit bit is set to 0, so we need to renormalize
+normalize_D_HLBC:
+;D is the sign+exponent
+;HLBC is the significand
+;returns AHLBC
+  ;make sure HLBC is not 0
+  ld a,h
+  or l
+  or b
+  or c
+  ret z
+
+  ld a,d
+normalize_D_HLBC_nonzero:
+  ;save the sign
+  add a,a
+  push af
+  rrca
+
+L2:
+  dec a
+  jr z,L3
+  sla c
+  rl b
+  adc hl,hl
+  jp nc,L2
+  ;now round
+  sla c
+  ld bc,0
+  adc hl,bc
+  ;if carry is set, then the implicit bit is 2, and the rest of the exponent is 0
+  ;so we can just increment A and keep HL as 0
+  adc a,b
+  add a,a
+L3:
+  ld d,a
+  pop af
+  ld a,d
+  rra
+  ret
+
+f24add_subtract_same_exp:
+;subtract the significands
+  ld a,b
+;  or a
+  sbc hl,de
+
+;if zero, then the result is zero, but we'll keep the same sign
+  jr nz,$+5;  assembles to 32 3 (the +5 is from the base)
+  and %10000000
+  ret
+
+  ;if the carry flag is set, then we need to change the sign of the output
+  ;and negate the significand. if reset, then we still need to normalize and whatnot
+  ld bc,0
+  jr nc,normalize_D_HLBC_nonzero
+  xor $80
+  ld d,a
+  xor a
+  sub l
+  ld l,a
+  sbc a,a
+  sub h
+  ld h,a
+  ld a,d
+  jr normalize_D_HLBC_nonzero
+
+f24add_reorder:
+  xor c
+  rlc c
+  rla
+;Want to rearrange so that A-C>=0
+  sub c
+  ret z
+  jr nc,L4
+  neg
+  ;A is the difference in exponents
+  rrc c
+  ld b,c
+  ex de,hl
+L4:
+;A is how many bits to shift DE right
+;B is the sign+exponent of the result
+  or a
+  rra
+  cp 18
+  ret c
+return_exp_b:
+  ld a,b
+  ret
+
+f24add_op1_inf_nan:
+  ld a,h
+  or l
+  jr nz,return_exp_b
+;so op1 is +inf or -inf
+;If op2 is finite, then just return op1
+  or c
+  jr z,return_exp_b
+  inc a
+  add a,a
+  jr nz,return_exp_b
+
+;if op2 is NaN, return NaN
+  ld a,d
+  or e
+  ld a,c
+  jr nz,L5
+
+;so |op1| and |op2| are inf
+;if they have the same sign, fine, else return NaN
+  cp b
+  ret z
+L5:
+  dec hl
+  ret
+
+rshift_1DE:
+  ld bc,0
+  scf
+L6:
+  rr d
+  rr e
+  rr b
+  rr c
+  dec a
+  jr nz,L6
+  ret
+  
+; --------------------------------------------------------------------------
+; f24sub, f24rsub, f24neg
+; --------------------------------------------------------------------------
+
+f24sub:
+;AHL - CDE ==> AHL
+;Destroys BC,DE
+;
+  ld b,a
+  ld a,c
+  xor $80
+  ld c,a
+  ld a,b
+  jp f24add
+
+f24rsub:
+;-AHL + CDE ==> AHL
+;Destroys BC,DE
+;
+  xor $80
+  jp f24add
+
+f24neg:
+;-AHL ==> AHL
+
+;-(+0) ==> +0
+  or a
+  ret z
+
+;otherwise, negate
+  xor 80h
+  ret
+  
+; --------------------------------------------------------------------------
+; f24mul
+; --------------------------------------------------------------------------
+
+f24mul:
+;AHL * CDE ==> AHL
+;Destroys BC,DE
+;
+
+;put the output sign in the top bit of A
+  ld b,a
+  ld a,c
+  and $80
+  xor b
+
+;check for special values
+;NaN*x ==> NaN
+;0*fin ==> 0
+;0*inf ==> NaN
+;inf*fin ==> inf
+;inf*inf ==> inf
+
+;save A
+  ld b,a
+  and $7F
+  jr z,f24mul_op1_0
+  inc a
+  jp m,f24mul_op1_inf_nan
+
+;so the first value is finite
+  ld a,c
+  and $7F
+  ld c,a
+  ret z
+  inc a
+  jp m,return_CDE
+
+;upper bit of B is the output sign
+;first approximation of the exponent is
+; (B&7F) + (C&7F) - 63
+  ld a,b
+  and $7F
+  add a,c
+  sub 63
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jr c,L7
+f24mul_return_inf:
+  ld a,b
+  or %01111111
+  ld hl,0   ;overflow so return inf
+  ret
+L7:
+
+  xor b
+  and $7F
+  xor b
+f24mul_significand:
+;save the exponent
+  push af
+
+;now compute (1.HL * 1.DE)
+; = (1+.HL)(1+.DE)
+; = 1+.HL+.DE+.HL*.DE
+  ld b,h
+  ld c,l
+  push hl
+  push de
+  call mul16
+  ;result is .DEHL
+  ;we can discard HL, but first round
+  xor a
+  sla h
+  ex de,hl
+  pop bc
+  adc hl,bc
+  adc a,0
+  pop bc
+  add hl,bc
+  adc a,0
+  rra
+;now 1+A.HL is the significand
+  pop bc    ;B is the exponent
+  ld a,b
+  ret z
+  ccf
+  rr h
+  rr l
+  inc a
+  inc a
+  add a,a
+  jr z,f24mul_return_inf
+  rra
+  dec a
+  ret
+
+f24mul_op1_0:
+  ld a,c
+  and $7F
+  ret z
+  inc a
+  jp m,f24mul_return_NaN
+  xor a
+  ret
+
+f24mul_op1_inf_nan:
+  ld a,h
+  or l
+  ld a,b
+  ret nz    ;NaN
+
+;inf*0 is NaN
+  ld a,c
+  and $7F
+  jr nz,L8
+f24mul_return_NaN:
+  dec a   ;inf*0
+  ld h,a  ;=
+  ld l,a  ;NaN
+  ret
+L8:
+  inc a
+  jp m,L9
+  ld a,b    ;returning inf
+  ret
+L9:
+
+;op1 is inf
+;op2 is is either NaN or inf
+; inf*NaN ==> NaN
+; inf*inf ==> inf
+;so just return op2's significand
+  ld a,c
+  ex de,hl
+  ret
+  
+; --------------------------------------------------------------------------
+; f24inv, f24div
+; --------------------------------------------------------------------------
+
+f24inv:
+  ld c,a
+  ex de,hl
+  ld a,$3F
+  ld hl,0
+f24div:
+;AHL * CDE ==> AHL
+;Destroys BC,DE
+;
+  ;put the output sign in B
+  ld b,a
+  xor c
+  add a,a
+  ld a,b
+  rla
+  rrca
+  ld b,a
+
+
+;check for special values
+;NaN/x ==> NaN
+;0/fin ==> 0
+;  0/0 ==> NaN
+;inf/inf ==> NaN
+;inf/x ==> inf
+;x/NaN ==> NaN
+;x/inf ==> 0
+;x/0 ==> NaN
+
+  and $7F
+  jp z,f24div_0_x
+  inc a
+  jp m,f24div_infnan_x
+
+  ld a,c
+  and $7F
+  jr nz,L10
+  dec a
+  ld h,a
+  ld l,a
+  ret
+L10:
+  inc a
+  jp m,f24div_x_infnan
+
+
+;upper bit of B is the output sign
+;first approximation of the exponent is
+; (B&7F) - (C&7F) + 63
+  res 7,c
+  ld a,b
+  and $7F
+  add a,63
+  sub c
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jr c,L11
+f24div_return_inf:
+  ld a,b
+  or %01111111
+  ld hl,0   ;overflow so return inf
+  ret
+L11:
+
+
+;now compute (1.HL / 1.DE)
+; = (1+.HL)/(1+.DE)
+
+; want 1.HL>1.DE, because then result is going to be 1.x
+;so we can end up doing (.HL-.DE)/(1.DE) to 16 bits precision
+  or a
+  ld c,0    ;top bit of 1.HL-1.DE
+  sbc hl,de
+  jr nc,f24div_ready
+  ;if carry is set, then DE was the larger of the two
+  ;so we need to decrement the exponent and do
+  ;(HL+DE)*2-DE
+  dec a     ;decrement exponent
+  ret z     ;return 0 if underflowed
+  add hl,de
+  add hl,hl
+  rl c
+  inc c
+  sbc hl,de
+  jr nc,f24div_ready
+  dec c
+f24div_ready:
+;C.HL is the numerator, 1.DE is the denominator
+;A is the exponent, B[7] is the sign
+;save the exponent and sign
+  push bc
+  push af
+
+;we can now commence 16  iterations of this division
+  call fdiv24_div16
+
+  pop de
+  pop bc
+  adc a,d
+  jp p,L12
+f24div_return_NaN:
+  dec a
+  ld h,a
+  ld l,a
+L12:
+  xor b
+  and $7F
+  xor b
+  ret
+
+
+fdiv24_div16:
+;negate the divisior for more efficient division
+;(16-bit addition is cheaper than subtraction)
+  xor a
+  sub e
+  ld e,a
+  ld a,0
+  sbc a,d
+  ld d,a
+  sbc a,a
+  dec a
+  ld b,a
+
+  ld a,c
+  call fdiv24_div8
+  rl c
+  push bc
+  call fdiv24_div8
+  rl c
+  ;check if  2*A.HL>1.DE
+  add hl,hl
+  adc a,a
+  add hl,de
+  adc a,b
+
+  pop hl
+  ld h,l
+  ld l,c
+  ld bc,0
+  ld a,b
+  adc hl,bc
+  ret
+
+fdiv24_div8:
+  call fdiv24_div4
+fdiv24_div4:
+  call fdiv24_div2
+fdiv24_div2:
+  call fdiv24_div1
+fdiv24_div1:
+  rl c
+  add hl,hl
+  adc a,a
+  ret z
+  add hl,de
+  adc a,b
+  ret c
+  sbc hl,de
+  sbc a,b
+  ret
+
+
+f24div_0_x:
+;make sure we aren't trying 0/NaN or 0/0
+  ld a,c
+  and $7F
+  jr z,f24div_return_NaN
+  inc a
+  jp m,L13
+  xor a
+  ret
+L13:
+  ld a,d
+  or e
+  ret z
+  ld a,c
+  ex de,hl
+  ret
+f24div_x_infnan:
+  ld a,d
+  or e
+  ret z
+  ld a,c  
+  ex de,hl
+  ret
+
+f24div_infnan_x:
+  ld a,h
+  or l
+  ld a,b
+  ret nz
+  ;make sure x is not inf NaN or 0
+  ld a,c
+  and $7F
+  jr z,f24div_return_NaN
+  inc a
+  jp m,f24div_return_NaN
+  ld a,b
+  ret
+
+; --------------------------------------------------------------------------
+; mul16
+; --------------------------------------------------------------------------
+
+;This was made by Runer112
+;Tested by jacobly
+mul16:
+;BC*DE --> DEHL
+; ~544.887cc as calculated in jacobly's test
+;min: 214cc  (DE = 1)
+;max: 667cc
+;avg: 544.4507883cc   however, deferring to jacobly's result as mine may have math issues ?
+;177 bytes
+	ld	a,d
+	ld	d,0
+	ld	h,b
+	ld	l,c
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit14
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit13
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit12
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit11
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit10
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit9
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit8
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit7
+	ld	a,e
+ 	and	%11111110
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit6
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit5
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit4
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit3
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit2
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit1
+	add	a,a
+	jr	c,Mul_BC_DE_DEHL_Bit0
+	rr	e
+	ret	c
+	ld	h,d
+	ld	l,e
+	ret
+
+Mul_BC_DE_DEHL_Bit14:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit13
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit13:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit12
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit12:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit11
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit11:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit10
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit10:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit9
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit9:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit8
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit8:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit7
+	add	hl,bc
+	adc	a,d
+Mul_BC_DE_DEHL_Bit7:
+	ld	d,a
+	ld	a,e
+	and	%11111110
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit6
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit6:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit5
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit5:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit4
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit4:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit3
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit3:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit2
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit2:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit1
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit1:
+	add	hl,hl
+	adc	a,a
+	jr	nc,Mul_BC_DE_DEHL_Bit0
+	add	hl,bc
+	adc	a,0
+Mul_BC_DE_DEHL_Bit0:
+	add	hl,hl
+	adc	a,a
+	jr	c,Mul_BC_DE_DEHL_FunkyCarry
+	rr	e
+	ld	e,a
+	ret	nc
+	add	hl,bc
+	ret	nc
+	inc	e
+	ret	nz
+	inc	d
+	ret
+
+Mul_BC_DE_DEHL_FunkyCarry:
+	inc	d
+	rr	e
+	ld	e,a
+	ret	nc
+	add	hl,bc
+	ret	nc
+	inc	e
+	ret
+
+; --------------------------------------------------------------------------
+; u8tof24
+; --------------------------------------------------------------------------
+
+u8tof24:
+;Inputs:
+;   A holds a 8-bit unsigned integer, (0 to 255)
+;Outputs:
+;   Converts to an f24 float in AHL
+;   returns z flag set if zero, nz otherwise :)
+
+;Check if A is 0, if so return AHL == 0x00yyyy
+  or a
+  ret z
+
+  ld b,$3F+8    ;Initial exponent and sign
+
+; A is non-zero
+; shift A left until there is an overflow (the implicit bit)
+; meanwhile, decrement B, the exponent each iteration
+  dec b
+  add a,a
+  jr nc,$-2; assembles to 48 252 (252 = -4)
+  ld h,a
+  ld l,0
+  ld a,b
+  ret
+  
+; --------------------------------------------------------------------------
+; f24tou8
+; --------------------------------------------------------------------------
+
+f24tou8:
+;AHL to an 8-bit unsigned integer
+;NaN ==> 0
+;too big ==> 255 (even if neg)
+;negative values in range are mod 256
+
+;save the sign
+  ld c,a
+
+;Check if the input is 0
+  add a,a
+  ret z
+
+
+;check if inf or NaN
+  cp $FE
+  jr nz,L15
+  ld a,h
+  or l
+  jr nz,f24tou8_return_0
+f24tou8_return_inf:
+  ld a,255
+  ret
+L15:
+
+;now if exponent is less than 0, just return 0
+  cp 63*2
+  jr nc,L16
+f24tou8_return_0:
+  xor a
+  ret
+L16:
+
+;if the exponent is greater than 7, return 255
+  rra
+  sub 63
+  cp 8
+  jr nc,f24tou8_return_inf
+
+;all is good!
+;A is the exponent
+;1+A is the number of bits to read
+  ld b,a
+  or a
+  ld a,1
+  jr z,L17
+
+L18:  add hl,hl
+  rla
+  djnz L18
+L17:
+  sla c
+  ret nc
+  neg
+  ret
+
+; --------------------------------------------------------------------------
+; f24cmp
+; --------------------------------------------------------------------------
+
+f24cmp:
+;returns the flags for float AHL minus float CDE
+;   AHL >= CDE, nc
+;   AHL < CDE,  c
+;   AHL == CDE, z (and nc)
+;
+;Note:
+;   This allows some wiggle room in the bottom two bits. For example, if the two
+;   exponents are the same and the two significands differ by at most 3, they are
+;   considered equal.
+;
+;Note:
+;   NaN is a special case. This routines returns that NaN<x for all x.
+;   This gives the weird property NaN<NaN, and when sorting, NaN will be the
+;   smallest element.
+;
+
+;check for inf and NaN
+  ld b,a
+  and $7F
+  inc a
+  jp m,f24cmp_special
+  ld a,b
+
+;save the old exponent
+  push af
+  call f24sub
+
+;restore the old exponent
+  pop bc
+
+; if 0, return equal
+  xor 80h
+  ret z
+  xor 80h
+  ret z
+
+;if the difference was only in the bottom two bits, we'll call it good
+;check if (B&7F)-(A&7F) >= 15
+;check if (B&7F) > 14 + (A&7F)
+  ld c,a    ;new exponent, need to save the sign for later comparison
+  res 7,b
+  and $7F
+  add a,14
+  sub b
+  jr nc,$+4
+  xor a
+  ret
+
+;otherwise, not equal, so let's return the sign in c and nz
+  ld a,c
+return_nz_sign_a:
+  or $7F
+  add a,a
+  ret
+
+f24cmp_special:
+  ld a,h
+  or l
+  ccf
+  ret nz
+
+;so the first op is inf
+
+;if second of is finite, return the sign of B in carry and nz
+
+  ld a,c
+  and $7F
+  inc a
+  ld a,b
+  jp p,return_nz_sign_a
+
+;second op is either NaN or inf
+  ld a,d
+  or e
+  ret nz
+
+; op1 op2 result
+; 7F  7F  z, nc
+; 7F  FF  nz,nc
+; FF  7F  nz,c
+; FF  FF  z, nc
+  ld a,c
+  cp b
+  ret
+
+; --------------------------------------------------------------------------
+; f24abs
+; --------------------------------------------------------------------------
+
+f24abs:
+;abs(AHL) ==> AHL
+  and $7F
+  ret
+  
+; --------------------------------------------------------------------------
+; f24mod1
+; --------------------------------------------------------------------------
+
+f24mod1:
+;AHL % 1 ==> AHL
+
+; save A
+  ld c,a
+
+; 0 mod 1 is 0
+  add a,a
+  ret z
+
+;inf and NaN mod 1 are NaN
+  cp $FE
+  rrca    ;A is now the exponent
+  jr nz,L23
+  ld h,a  ; sets HL to non-zero
+  ret
+L23:
+
+;if A<63, the input is already less than 1
+  cp 63
+  jr c,mod_finished
+
+;if a>=63+16, then the input won't have enough bits for a fractional part
+  sub 63+16
+  add a,16
+  jr c,L23a
+  xor a
+  ret
+L23a:
+  ;A+1 is the number of bits to shift out of HL
+  ld b,a
+  jr z,L24
+  add hl,hl
+  djnz $-1
+L24:
+
+;now need to renormalize
+  ld a,h
+  or l
+  ret z
+  ld a,63
+  dec a
+  add hl,hl
+  jr nc,$-2
+mod_finished:
+;now if the top bit of C is set, then we still need to do 1.0-AHL
+  sla c
+  ret nc
+  ld c,63
+  ld de,0
+  jp f24rsub
+
+; --------------------------------------------------------------------------
+; f24sqr
+; --------------------------------------------------------------------------
+
+f24sqr:
+;AHL * AHL ==> AHL
+;Destroys BC,DE
+;
+
+;0*0 ==> 0
+  and $7F
+  ret z
+
+;NaN*NaN ==> NaN
+;inf*inf ==> inf
+  inc a
+  jp p,L26
+  dec a
+  ret
+L26:
+
+;first approximation of the exponent is
+; (A-1)+(A-1) - 63
+  add a,a   ;won't overflow since top bit is guaranteed reset at this point
+  sub 65
+  jr nc,$+4
+  xor a     ;underflowed, so return 0
+  ret
+
+  cp $7F
+  jp nc,f24mul_return_inf+1
+
+  ld d,h
+  ld e,l
+
+  jp f24mul_significand
+
+; --------------------------------------------------------------------------
+; f24cos
+; --------------------------------------------------------------------------
+
+f24cos:
+;cos(AHL) ==> AHL
+
+;cos(0) == 1    ; fixed by JFB
+  add a,a
+  jr nz,f24cos_skip
+  ld a,$3F ; 1.0
+  ld hl,0
+  ret
+
+;cos(inf)==cos(NaN)==NaN
+f24cos_skip:
+  rrca
+  cp $7F
+  jr nz,L20
+  ld h,a
+  ret
+L20:
+
+;multiply by 1/(2pi)
+  ld c,$3C
+  ld de,$45F3
+  call f24mul
+
+; Add .5
+  ld c,$3E
+  ld de,$0
+  call f24add
+
+;Now grab mod 1
+  call f24mod1
+
+xcos_stepin:
+;subtract off the .5
+  ld c,$BE
+  ld de,$0
+  call f24add
+
+;now x is on [-.5,.5], but we need to evaluate cos(x*2pi) with x on [-.125,.125]
+;We need to employ some identities
+;  cos(-x)=cos(x)
+;    make x positive
+  and $7F
+
+;  cos(x-pi)=-cos(x)
+;   if our x is now on [.25,.5], then subtract x from .5 absolute value,
+;   and return the negative result.
+  cp $3D
+  jr c,L21
+  xor 80h
+  ld c,$3E
+  ld de,$0
+  call f24add
+  call L21
+  xor 80h
+  ret
+L21:
+
+
+;  cos(pi/2-x)=sin(x)
+;    if our x is now on [.125,.25], subtract it from .25 and feed it to the sine routine.
+  cp $3C
+  jr c,L22
+  xor $80
+  ld c,$3D
+  ld de,$0
+  call f24add
+  jp f24sin_range_reduced
+L22:
+
+f24cos_range_reduced:
+;multiply by 2pi
+  ld c,$41
+  ld de,$9220
+  call f24mul
+
+;x is on [0,pi/4]
+;retun 1 + x^2 * (-0.5 + x^2 * (4.1660785675048828125e-2 + x^2 * (-1.36436522006988525390625e-3)))
+
+;-x^2
+  call f24sqr
+  xor $80
+
+;save x^2
+  push hl
+  ld c,a
+  push bc
+
+;multiply by 1.36436522006988525390625e-3
+  ld c,$35
+  ld de,$65A9
+  call f24mul
+
+;add 4.1660785675048828125e-2
+  ld c,$3A
+  ld de,$5549
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  push de
+  push bc
+  call f24mul
+
+;add .5
+  ld c,$3E
+  ld de,$0
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  call f24mul
+
+;add 1
+  ld c,$3F
+  ld de,$0
+  jp f24add
+
+; --------------------------------------------------------------------------
+; f24sin
+; --------------------------------------------------------------------------
+
+f24sin:
+;sin(AHL) ==> AHL
+
+;save A
+  ld b,a
+
+;sin(0) == 0
+  add a,a
+  ret z
+
+;sin(inf)==sin(NaN)==NaN
+  rrca
+  cp $7F
+  jr nz,L30
+  ld h,a
+  ret
+L30:
+
+  ld a,b
+;Need to apply range reduction
+; We want the input on [-pi/4,pi/4]
+;multiply by 1/(2pi)
+  ld c,$3C
+  ld de,$45F3
+  call f24mul
+
+; Add .25
+  ld c,$3D
+  ld de,$0
+  call f24add
+
+;Now grab mod 1
+  call f24mod1
+
+  jp xcos_stepin
+
+f24sin_range_reduced:
+;multiply by 2pi
+  ld c,$41
+  ld de,$9220
+  call f24mul
+
+;x is on [0,pi/4]
+;return x * (1 - x^2 * (0.16663360595703125 - x^2 * 8.1627368927001953125e-3)
+
+;save x
+  push hl
+  push af
+
+;-x^2
+  call f24sqr
+  xor $80
+
+;save x^2
+  push hl
+  ld c,a
+  push bc
+
+;multiply by 8.1627368927001953125e-3
+  ld c,$38
+  ld de,$0B7A
+  call f24mul
+
+;add 0.16663360595703125
+  ld c,$3C
+  ld de,$5544
+  call f24add
+
+;multiply by -x^2
+  pop bc
+  pop de
+  call f24mul
+
+;add 1
+  ld c,$3F
+  ld de,$0
+  call f24add
+
+;multiply by x
+  pop bc
+  pop de
+  ld c,b
+  jp f24mul
+
