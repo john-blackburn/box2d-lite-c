@@ -26,7 +26,7 @@ I have now converted some of the code to Z80 assembly suitable for the ZX Spectr
 some unit tests showing vector and matrix maths etc.
 
 I have assembled and tested the code using ZX Spin, a
-Spectrum emulator which has a built in assembler. To run the code, run ZX Spin then select Tools > Z80 assembler. Then do File > Open
+Spectrum emulator which has a built in assembler (https://spectrumcomputing.co.uk/tool/40/ZX_Spin). To run the code, run ZX Spin then select Tools > Z80 assembler. Then do File > Open
 and open the file `unit.z80` (note that this includes other files). Then File > Assemble and Program > Run. The Spectrum screen will then show a series of unit test outputs with the number of the unit test at the bottom left in red. Press "S" to go to the next unit test. The numbers shown are floating point numbers in hex format. To convert to readable numbers run the Python scripts `f24.py` (float to hex) and `AHLtoFloat.py` (hex to float).
 
 You can see what the correct numbers should be in unit.z80. For instance test "D" Is showing that the dot product of (4,2).(3,11) = 34.0 (represented as 0x441000). The most advanced function unit tested so far is `Collide` which returns the contact list between two passed-in bodies.
@@ -43,4 +43,4 @@ https://www.nongnu.org/z80asm/directives.html
 
 * If floating point arithmetic is too slow, I can then try fixed point arithmetic (in that case sizes and positions of bodies should be of order 1.0 and placed near the origin)
 
-* Routines findArbiter, eraseArbiter, insertArbiter should be written as a proper map/hash function rather than just stupidly looking up the value. The original C++ code used std::map.
+* Routines `findArbiter`, `eraseArbiter`, `insertArbiter` should be written as a proper map/hash function rather than just stupidly looking up the value. The original C++ code used std::map.
