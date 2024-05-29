@@ -80,6 +80,1687 @@ Contact_massTangent equ 39 ; 3
 Contact_bias equ 42 ; 3
 Contact_feature equ 45 ; 4 (Edges)
 
+; struct Arbiter
+Arbiter equ 106
+Arbiter_contacts equ 0 ; 49*2
+Arbiter_numContacts equ 98 ; 1
+Arbiter_body1 equ 99 ; 2
+Arbiter_body2 equ 101 ; 2
+Arbiter_friction equ 103 ; 3
+
+; struct ArbiterKey
+ArbiterKey equ 4
+ArbiterKey_body1 equ 0 ; 2 
+ArbiterKey_body2 equ 2 ; 2 
+
+g_bodies: ds 20*2
+g_numBodies: db 0
+
+g_arbiters: ds 20*Arbiter
+g_arbiterKeys: ds 20*ArbiterKey
+g_numArbiters: ds 1
+
+gravity: ds Vec2
+iterations: ds 1
+
+; ----------------------------------------------------------
+; struct Arbiter* findArbiter(struct ArbiterKey key)
+; return through hl
+; ----------------------------------------------------------
+
+findArbiter_key: ds ArbiterKey
+findArbiter_ret: ds 2
+findArbiter:
+
+  push ix
+  push iy
+
+  ld a,(g_numArbiters)
+  cp 0
+  jr z,findArbiter_break
+  ld b,a  
+  
+  ld ix,g_arbiterKeys
+  ld iy,g_arbiters
+
+findArbiter_loop:
+  ld l,(ix+ArbiterKey_body1)
+  ld h,(ix+ArbiterKey_body1+1)
+  
+  ld de,(findArbiter_key)
+
+  ld a,h
+  cp d
+  jr nz, findArbiter_skip
+  
+  ld a,l
+  cp e  
+  jr nz, findArbiter_skip
+
+  ld l,(ix+ArbiterKey_body2)
+  ld h,(ix+ArbiterKey_body2+1)
+  
+  ld de,(findArbiter_key+2)
+
+  ld a,h
+  cp d
+  jr nz, findArbiter_skip
+  
+  ld a,l
+  cp e  
+  jr nz, findArbiter_skip
+
+  push iy
+  pop hl
+  
+  pop iy
+  pop ix
+  ret
+  
+findArbiter_skip:  
+
+  ld de,ArbiterKey
+  add ix,de
+  
+  ld de,Arbiter
+  add iy,de
+  
+  djnz findArbiter_loop  
+
+findArbiter_break:
+  ld hl,0  
+  ld (findArbiter_ret),hl
+  
+  pop iy
+  pop ix
+  
+  ret
+
+; ---------------------------------------------------------------
+; void insertArbiter(struct ArbiterKey key, struct Arbiter value)
+; ---------------------------------------------------------------
+
+insertArbiter_key: ds ArbiterKey
+insertArbiter_value: ds Arbiter
+insertArbiter:
+
+  ld a,(g_numArbiters)
+  ld hl,g_arbiterKeys
+  ld de,ArbiterKey
+  
+  call arrayIndex
+  
+  push hl
+  pop de
+
+  ld hl,insertArbiter_key
+  ld bc,ArbiterKey
+  ldir
+  
+  ld a,(g_numArbiters)
+  ld hl,g_arbiters
+  ld de,Arbiter
+  
+  call arrayIndex
+  
+  push hl
+  pop de
+
+  ld hl,insertArbiter_value
+  ld bc,Arbiter
+  ldir
+  
+  inc a
+  ld (g_numArbiters),a  
+
+  ret
+
+; ----------------------------------------------------------------
+; void eraseArbiter(struct ArbiterKey key)
+; ----------------------------------------------------------------
+
+eraseArbiter_key: ds Arbiter
+eraseArbiter:
+
+  push ix
+  push iy
+
+  ld a,(g_numArbiters)
+  cp 0
+  jr z,eraseArbiter_break
+  
+  ld b,a
+  ld ix,g_arbiterKeys
+  ld iy,g_arbiters
+  
+eraseArbiter_loop:
+
+  ld l,(ix+ArbiterKey_body1)
+  ld h,(ix+ArbiterKey_body1+1)
+  
+  ld de,(eraseArbiter_key)
+
+  ld a,h
+  cp d
+  jr nz, eraseArbiter_skip
+  
+  ld a,l
+  cp e  
+  jr nz, eraseArbiter_skip
+
+  ld l,(ix+ArbiterKey_body2)
+  ld h,(ix+ArbiterKey_body2+1)
+  
+  ld de,(eraseArbiter_key+2)
+
+  ld a,h
+  cp d
+  jr nz, eraseArbiter_skip
+  
+  ld a,l
+  cp e  
+  jr nz, eraseArbiter_skip
+f
+;  ld bc,(b-1)*ArbiterKey
+
+  ld c,b
+  dec c
+  
+  jr z,eraseArbiter_skip2 ; at end of array avoid ldir with bc=0
+
+  push bc ; preserve loop counter b
+  
+  ld b,0  
+  ld de,ArbiterKey
+  call mul16   ; hl = (b-1)*ArbiterKey
+  push hl
+  pop bc
+  
+  push ix
+  pop hl
+  ld de,ArbiterKey
+  add hl,de
+
+  push ix
+  pop de
+  
+  ldir
+  
+  pop bc
+  push bc
+  
+  ld c,b
+  dec c
+  ld b,0  
+  ld de,Arbiter
+  call mul16
+  push hl
+  pop bc
+  
+  push ix
+  pop hl
+  ld de,Arbiter
+  add hl,de
+
+  push ix
+  pop de
+    
+  ldir
+  
+  pop bc ; get b back
+
+eraseArbiter_skip2:
+  
+  ld a,(g_numArbiters)
+  dec a
+  ld (g_numArbiters),a
+  
+eraseArbiter_skip:
+
+  ld de,ArbiterKey
+  add ix,de
+  
+  ld de,Arbiter
+  add iy,de
+  
+  djnz eraseArbiter_loop  
+
+eraseArbiter_break:  
+  pop iy
+  pop ix
+  ret
+
+; -------------------------------------------------------------------
+; void initContact(struct Contact *c)
+; ix is contact c
+; -------------------------------------------------------------------
+  
+initContact:
+  
+  ld (ix+Contact_Pn),0
+  ld (ix+Contact_Pn+1),0
+  ld (ix+Contact_Pn+2),0
+
+  ld (ix+Contact_Pt),0
+  ld (ix+Contact_Pt+1),0
+  ld (ix+Contact_Pt+2),0
+
+  ld (ix+Contact_Pnb),0
+  ld (ix+Contact_Pnb+1),0
+  ld (ix+Contact_Pnb+2),0
+  
+  ret
+
+; ---------------------------------------------------------------
+; void UpdateArbiter(struct Arbiter *a, struct Contact* newContacts, int numNewContacts)
+; ix = a
+; iy = newContacts = cNew
+; a = numNewContacts
+; ----------------------------------------------------------------
+
+UpdateArbiter_mergedContacts: ds Contact*2
+
+UpdateArbiter:
+
+  push af
+  push ix
+  
+  ld ix,UpdateArbiter_mergedContacts
+  call initContact
+  
+  ld ix,UpdateArbiter_mergedContacts+Contact
+  call initContact  
+  
+  pop ix
+  push ix
+  push iy
+
+  cp 0
+  jr z,UpdateArbiter_break    
+  ld b,a ; numNewContacts
+  
+  ld hl,UpdateArbiter_mergedContacts  ; c for later
+  ld c,0; If set to 1, cNew = cOld
+  
+UpdateArbiter_loop:
+
+  push bc
+
+  ld b,(ix+Arbiter_numContacts) ; ix=Arbiter "a"
+  ld a,b
+  cp 0
+  jr z,UpdateArbiter_break2
+  
+;  push ix ; store "a"
+  ld de,Arbiter_contacts
+  add ix,de   ; cOld = a->contacts
+
+UpdateArbiter_loop2:
+    
+  ld a,(ix+Contact_feature+Edges_inEdge1)
+  ld d,a
+  ld a,(iy+Contact_feature+Edges_inEdge1)
+  cp d
+  jr nz, UpdateArbiter_skip
+
+  ld a,(ix+Contact_feature+Edges_outEdge1)
+  ld d,a
+  ld a,(iy+Contact_feature+Edges_outEdge1)
+  cp d
+  jr nz, UpdateArbiter_skip
+
+  ld a,(ix+Contact_feature+Edges_inEdge2)
+  ld d,a
+  ld a,(iy+Contact_feature+Edges_inEdge2)
+  cp d
+  jr nz, UpdateArbiter_skip
+
+  ld a,(ix+Contact_feature+Edges_outEdge2)
+  ld d,a
+  ld a,(iy+Contact_feature+Edges_outEdge2)
+  cp d
+  jr nz, UpdateArbiter_skip
+
+  ld c,1
+  jr UpdateArbiter_break2
+
+UpdateArbiter_skip:
+
+  ld de,Contact
+  add ix,de
+  
+  djnz UpdateArbiter_loop2
+
+UpdateArbiter_break2:
+;  pop ix ; a
+
+  ld a,c   ; found if c=1
+  cp 1
+  
+  jr nz, UpdateArbiter_skip2
+
+  push hl  ; c (store for later)
+
+  push hl  ; c
+  pop de
+  
+  push iy  ; cNew
+  pop hl  
+  
+  ld bc,Contact
+  ldir
+  
+  pop hl  ; c
+  push hl
+  
+  ld bc,Contact_Pn
+  add hl,bc
+  push hl
+  pop de ; c->Pn
+  
+  push ix ; cOld
+  pop hl
+  
+  add hl,bc
+  ld bc,9
+  ldir
+
+  pop hl ; c
+    
+UpdateArbiter_skip2:
+
+  ld de,Contact
+  add iy,de  ; cNew
+  add hl,de ; c (mergedContacts)
+  
+  pop bc
+  
+  djnz UpdateArbiter_loop
+UpdateArbiter_break:
+  
+  pop iy
+  pop ix ; "a"
+  pop af; numNewContacts
+
+  push ix
+  pop hl
+  
+  ld de,Arbiter_contacts
+  add hl,de
+  push hl
+  pop de ; a->contacts
+  
+  ld bc,Contact
+  ld e,a
+  ld d,0
+  call mul16 ; hl=numNewContacts*Contact
+
+  push hl
+  pop bc
+
+  ld hl,UpdateArbiter_mergedContacts
+  ldir
+
+  ld (ix+Arbiter_numContacts),a
+  
+  ret
+  
+; ----------------------------------------------------------------
+; void BroadPhase()
+; assume at g_numBodies >= 1
+; ----------------------------------------------------------------
+
+BroadPhase_newArb: ds Arbiter
+BroadPhase_key: ds ArbiterKey
+BroadPhase:
+
+  push ix
+  push iy
+
+  ld b,0
+  ld ix,g_bodies ; bi
+  
+BroadPhase_loop:
+  push bc
+
+  push ix
+  pop iy
+
+  ld de,Body
+  add iy,de ; bj
+  inc b ; start of inner loop
+  
+BroadPhase_loop2:
+  push bc
+
+  ld a,(ix+Body_invMass+0)
+  ld h,(ix+Body_invMass+1)
+  ld l,(ix+Body_invMass+2)
+  
+  ld c,0
+  ld d,0
+  ld e,0
+  
+  call f24cmp
+  
+  jr nz, BroadPhase_skip
+
+  ld a,(iy+Body_invMass+0)
+  ld h,(iy+Body_invMass+1)
+  ld l,(iy+Body_invMass+2)
+
+  call f24cmp
+  
+  jr nz, BroadPhase_skip
+
+  jp BroadPhase_continue
+
+BroadPhase_skip:
+
+  push ix  ; bi
+  pop hl
+  
+  push iy
+  pop de
+  
+  sbc hl,de ; bi-bj
+  
+  jr nc,BroadPhase_else
+  
+  ld (BroadPhase_newArb+Arbiter_body1),ix
+  ld (BroadPhase_newArb+Arbiter_body2),iy
+
+  ld (BroadPhase_key+ArbiterKey_body1),ix
+  ld (BroadPhase_key+ArbiterKey_body2),iy
+  jp BroadPhase_end 
+
+BroadPhase_else:
+  ld (BroadPhase_newArb+Arbiter_body1),iy
+  ld (BroadPhase_newArb+Arbiter_body2),ix
+
+  ld (BroadPhase_key+ArbiterKey_body1),iy
+  ld (BroadPhase_key+ArbiterKey_body2),ix
+
+BroadPhase_end:
+  push ix  
+  ld ix,BroadPhase_newArb+Arbiter_contacts
+  call initContact
+
+  ld de,Contact  
+  add ix,de
+  call initContact
+  pop ix
+
+; int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
+; hl=contact, ix=bodyA, iy=bodyB
+
+  ld hl,BroadPhase_newArb+Arbiter_contacts
+  ld ix,(BroadPhase_newArb+Arbiter_body1)
+  ld iy,(BroadPhase_newArb+Arbiter_body2)
+  
+  call Collide
+  ld (BroadPhase_newArb+Arbiter_numContacts),a
+  
+  push af
+  push ix
+  
+  ld de,Body_friction
+  ld ix,(BroadPhase_newArb+Arbiter_body1)
+  add ix,de
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,(BroadPhase_newArb+Arbiter_body2)
+  add ix,de
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24mul
+;  call f24sqrt
+
+  ld ix,BroadPhase_newArb
+  ld (ix+Arbiter_friction),a
+  ld (ix+Arbiter_friction+1),h
+  ld (ix+Arbiter_friction+2),l
+
+  pop ix
+  pop af
+
+  cp 0
+  jr z, BroadPhase_else1
+
+  ld de,findArbiter_key
+  ld hl,BroadPhase_key
+  ld bc,ArbiterKey
+  ldir
+  call findArbiter ; result in hl
+
+  ld a,h  ; if hl=0, sets z flag
+  or l
+
+  jr nz, BroadPhase_else2
+  
+  ld de,insertArbiter_key
+  ld hl,BroadPhase_key
+  ld bc,ArbiterKey
+  ldir
+  
+  ld de,insertArbiter_value
+  ld hl,BroadPhase_newArb
+  ld bc,Arbiter
+  ldir
+  
+  call insertArbiter
+  jp BroadPhase_end2  
+BroadPhase_else2:
+
+  push ix
+  push iy
+
+  push hl
+  pop ix
+  
+  ld iy,BroadPhase_newArb+Arbiter_contacts
+  ld a,(BroadPhase_newArb+Arbiter_numContacts)
+  
+  call UpdateArbiter
+  
+  pop iy
+  pop ix
+BroadPhase_end2:
+
+BroadPhase_else1:
+
+  ld de,eraseArbiter_key
+  ld hl,BroadPhase_key
+  ld bc,ArbiterKey
+  ldir
+  
+  call eraseArbiter
+BroadPhase_end1:
+  
+BroadPhase_continue:
+  ld bc,Body
+  add iy,bc ; bj
+  pop bc
+  inc b
+  ld a,(g_numBodies)
+  cp b
+  jp nz, BroadPhase_loop2
+
+  ld bc,Body
+  add ix,bc ; bi
+  pop bc
+  inc b
+  ld a,(g_numBodies)
+  cp b
+  jp nz, BroadPhase_loop
+
+  pop iy
+  pop ix
+  
+  ret
+  
+; ---------------------------------------------------------
+; void PreStep(struct Arbiter *a, float inv_dt)
+; a = ix
+; ---------------------------------------------------------
+  
+PreStep_inv_dt: ds 3
+PreStep_r1: ds 6
+PreStep_r2: ds 6
+PreStep_rn1: ds 3
+PreStep_rn2: ds 3
+PreStep_tangent: ds Vec2
+PreStep_b1invM: ds 3
+PreStep_b2invM: ds 3
+PreStep_b1invI: ds 3
+PreStep_b2invI: ds 3
+
+PreStep:
+ 
+  push ix ; a
+  push iy
+  
+  push ix
+  pop iy
+  add iy,Arbiter_contacts ; c
+  
+  ld b,(ix+Arbiter_numContacts)
+  ld a,b
+  cp 0
+  jr z,PreStep_break
+
+; a->body1->invMass
+  ld l,(ix+ArbiterKey_body1)
+  ld h,(ix+ArbiterKey_body1+1)
+  
+  push hl
+  ld de,Body_invMass
+  add hl,de
+  ld de,PreStep_b1invM
+  ld bc,3
+  ldir
+
+; a->body1->invI
+
+  pop hl
+  ld de,Body_invI
+  add hl,de
+  ld de,PreStep_b1invI
+  ld bc,3
+  ldir
+
+; a->body2->invMass
+  ld l,(ix+ArbiterKey_body2)
+  ld h,(ix+ArbiterKey_body2+1)
+  
+  push hl
+  ld de,Body_invMass
+  add hl,de
+  ld de,PreStep_b2invM
+  ld bc,3
+  ldir
+
+; a->body2->invI
+
+  pop hl
+  ld de,Body_invI
+  add hl,de
+  ld de,PreStep_b2invI
+  ld bc,3
+  ldir
+
+PreStep_loop:
+  push bc
+
+
+; struct Vec2 r1 = diffVec2(c->position, a->body1->position);
+  
+  push iy
+  pop hl
+  ld de,Contact_position
+  add hl,de
+  ld de,diffVec2_a
+  ld bc,Vec2
+  ldir
+
+  ld de,Body_position  
+  ld l,(ix+Arbiter_body1)
+  ld h,(ix+Arbiter_body1+1)
+  add hl,de
+  ld de,diffVec2_b
+  ld bc,Vec2
+  ldir  
+  
+  call diffVec2
+  
+  ld de,PreStep_r1
+  ld hl,diffVec2_res
+  ld bc,Vec2
+  ldir
+  
+; struct Vec2 r2 = diffVec2(c->position, a->body2->position);
+  
+  ld de,Body_position  
+  ld l,(ix+Arbiter_body2)
+  ld h,(ix+Arbiter_body2+1)
+  add hl,de
+  ld de,diffVec2_b
+  ld bc,Vec2
+  ldir  
+  
+  call diffVec2
+  
+  ld de,PreStep_r2
+  ld hl,diffVec2_res
+  ld bc,Vec2
+  ldir
+
+; float rn1 = Dot(r1, c->normal);
+; float rn2 = Dot(r2, c->normal);
+
+  ld de,Dot_a
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+
+  push iy  ;  ld hl,iy+Contact_normal
+  pop hl
+  ld de,Contact_normal
+  add hl,de  
+  ld de,Dot_b
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  push ix
+  ld ix,PreStep_rn1
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld de,Dot_a
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  ld ix,PreStep_rn2
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+  
+; float kNormal = a->body1->invMass + a->body2->invMass;
+
+  push ix
+  ld ix,PreStep_b1invM
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,PreStep_b2invM
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+    
+  call f24add
+  
+  ld ix,kNormal
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+  
+  ;a->body1->invI * (Dot(r1, r1) - rn1 * rn1)
+  
+  ld de,Dot_a
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+  
+  ld de,Dot_b
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+  
+  push ix
+  ld ix,PreStep_rn1
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  pop ix
+  
+  call f24mul
+
+  push hl ; AHL->CDE
+  pop de
+  ld c,a
+
+  push ix ; a
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24sub  
+  
+  ld ix,PreStep_b1invI
+  ld c,(ix+0)  
+  ld d,(ix+1)  
+  ld e,(ix+2) 
+  pop ix
+  
+  call f24mul
+  
+  push af
+  push hl
+
+; a->body2->invI * (Dot(r2, r2) - rn2 * rn2)  
+
+  ld de,Dot_a
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  ld de,Dot_b
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  push ix  
+  ld ix,PreStep_rn2
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  pop ix
+  
+  call f24mul
+
+  push hl ; AHL -> CDE
+  pop de
+  ld c,a
+
+  push ix  
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  call f24sub  
+
+  ld ix,PreStep_b2invI
+  ld c,(ix+Body_invI)  
+  ld d,(ix+Body_invI+1)  
+  ld e,(ix+Body_invI+2) 
+  pop ix
+
+  call f24mul
+
+  pop de
+  pop bc  
+  ld c,b
+
+  call f24add
+  
+  push ix
+  ld ix,kNormal
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+
+  call f24add
+
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+
+;		c->massNormal = 1.0f / kNormal;
+
+  ld a,$3F  ; 1.0
+  ld h,0
+  ld l,0
+
+  push ix  
+  ld ix,kNormal
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  pop ix
+  
+  call f24div
+  
+  ld (iy+Contact_massNormal),a
+  ld (iy+Contact_massNormal+1),h
+  ld (iy+Contact_massNormal+2),l
+  
+;		struct Vec2 tangent = Crossvs(c->normal, 1.0f);
+
+  push iy   ; ld hl,iy+Contact_normal
+  pop hl
+  ld de,Contact_normal
+  add hl,de  
+  ld de,Crossvs_a
+  ld bc,Vec2
+  ldir
+
+  push ix
+  ld ix,Crossvs_s
+  ld (ix+0),$3F
+  ld (ix+1),0
+  ld (ix+2),1
+  pop ix
+  
+  call Crossvs
+  
+  ld de,PreStep_tangent
+  ld hl,Crossvs_res
+  ld bc,Vec2
+  ldir
+  
+; 		float rt1 = Dot(r1, tangent);
+;		float rt2 = Dot(r2, tangent);
+
+  ld de,Dot_a
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+
+  ld de,Dot_b
+  ld hl,PreStep_tangent
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  ld de,PreStep_rt1
+  ld hl,Dot_res
+  ld bc,3
+  ldir
+  
+  ld de,Dot_a
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  ld de,PreStep_rt2
+  ld hl,Dot_res
+  ld bc,3
+  ldir
+  
+  ; float kTangent = a->body1->invMass + a->body2->invMass;
+
+  push ix  
+  ld ix,PreStep_b1invM
+  ld a,(ix+Body_invMass)
+  ld h,(ix+Body_invMass+1)
+  ld l,(ix+Body_invMass+2)
+
+  ld ix,PreStep_b2invM
+  ld c,(ix+Body_invMass)
+  ld d,(ix+Body_invMass+1)
+  ld e,(ix+Body_invMass+2)
+  
+  call f24add
+  
+  ld ix,kTangent
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+  
+  ;a->body1->invI * (Dot(r1, r1) - rt1 * rt1)
+  
+  ld de,Dot_a
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+  
+  ld de,Dot_b
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  push ix  
+  ld ix,PreStep_rt1
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  pop ix
+
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24mul
+
+  push hl ; AHL->CDE
+  pop de
+  ld c,a
+
+  push ix  
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  pop ix
+
+  call f24sub  
+
+  push ix  
+  ld ix,PreStep_b1invI
+  ld c,(ix+0)  
+  ld d,(ix+1)  
+  ld e,(ix+2) 
+  pop ix
+  
+  call f24mul
+  
+  push af
+  push hl
+
+; a->body2->invI * (Dot(r2, r2) - rt2 * rt2)  
+
+  ld de,Dot_a
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  ld de,Dot_b
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  ldir
+  
+  call Dot
+
+  push ix  
+  ld ix,PreStep_rt2
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  pop ix
+  
+  call f24mul
+
+  push hl ; AHL -> CDE
+  pop de
+  ld c,a
+
+  push ix  
+  ld ix,Dot_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call f24sub  
+  
+  ld ix,PreStep_b2invI
+  ld c,(ix+0)  
+  ld d,(ix+1)  
+  ld e,(ix+2) 
+  pop ix
+
+  call f24mul
+
+  pop de
+  pop bc  
+  ld c,b
+
+  call f24add
+
+  push ix  
+  ld ix,kTangent
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+
+  call f24add
+
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+  
+;		c->massTangent = 1.0f / kTangent;
+
+  ld a,$3F  ; 1.0
+  ld h,0
+  ld l,0
+
+  push ix  
+  ld ix,kTangent
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  pop ix
+  
+  call f24div
+  
+  ld (iy+Contact_massTangent),a
+  ld (iy+Contact_massTangent+1),h
+  ld (iy+Contact_massTangent+2),l
+  
+; 		c->bias = -k_biasFactor * inv_dt * Min(0.0f, c->separation + k_allowedPenetration);
+
+
+  ld a,0
+  ld (Min_a),a
+  ld (Min_a+1),a
+  ld (Min_a+2),a
+
+  ld a,(iy+Contact_separation)
+  ld h,(iy+Contact_separation+1)
+  ld l,(iy+Contact_separation+2)
+  
+  ld c, ;0.01f
+  ld d,
+  ld e,
+  
+  call f24add
+  
+  push ix
+  ld ix,Min_b
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  
+  call Min
+  
+  ld ix,PreStep_inv_dt
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+1)
+  pop ix
+  
+  call f24mul
+  
+  ld c, ; 0.2f biasfactor
+  
+  call f24mul
+  call f24neg
+  
+  ld (iy+Contact_bias),a
+  ld (iy+Contact_bias+1),h
+  ld (iy+Contact_bias+2),l
+  
+; struct Vec2 P = sumVec2(scaledVec2(c->Pn, c->normal), scaledVec2(c->Pt, tangent));
+
+  push iy
+  pop hl
+  ld de,Contact_Pn
+  add hl,de
+  ld de,scaledVec2_s
+  ld bc,3
+  ldir
+  
+  push iy
+  pop hl
+  ld de,Contact_normal
+  add hl,de
+  ld de,scaledVec2_a
+  ld bc,Vec2
+  ldir
+
+  call scaledVec2  
+  
+  ld de,sumVec2_a
+  ld hl,scaledVec2_res
+  ld bc,Vec2
+  ldir
+  
+  push iy
+  pop hl
+  ld de,Contact_Pt
+  add hl,de
+  ld de,scaledVec2_s
+  ld bc,3
+  ldir
+  
+  push iy
+  pop hl
+  ld de,Contact_tangent
+  add hl,de
+  ld de,scaledVec2_a
+  ld bc,Vec2
+  ldir
+
+  call scaledVec2  
+
+  ld de,sumVec2_b
+  ld hl,scaledVec2_res
+  ld bc,Vec2
+  ldir
+
+  call sumVec2
+  
+  ld de,PreStep_P
+  ld hl,sumVec2_res
+  ld bc,Vec2
+  ldir
+
+; subfromVec2(&a->body1->velocity, scaledVec2(a->body1->invMass, P));
+
+  ld hl,PreStep_b1invI
+  ld de,scaledVec2_s
+  ld bc,3
+  ldir
+
+  ld de,scaledVec2_a
+  ld hl,PreStep_P
+  ld bc,Vec2
+  ldir
+  
+  call scaledVec2
+  
+  ld hl,scaledVec2_res
+  ld de,subfromVec2_other
+  ld bc,Vec2
+  ldir
+  
+  ld l,(ix+Arbiter_body1)
+  ld h,(ix+Arbiter_body1+1)
+  ld de,Body_velocity
+  add hl,de
+  
+  push ix
+
+  push hl
+  pop ix  ; ix vec to be subtracted from
+  
+  call subfromVec2
+
+  pop ix  
+  
+;  a->body1->angularVelocity -= a->body1->invI * Crossvv(r1, P);
+
+  ld de,Crossvv_a
+  ld hl,PreStep_r1
+  ld bc,Vec2
+  
+  ld de,Crossvv_b
+  ld hl,PreStep_P
+  ld bc,Vec2
+
+  call Crossvv
+
+  ld ix,Crossvv_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,PreStep_b1invI
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+
+  call f24mul  
+  
+  push hl
+  pop de
+  ld c,a
+
+  push ix  
+  ld l,(ix+Arbiter_body1)
+  ld h,(ix+Arbiter_body1+1)
+  add hl,Body_angularVelocity
+  push hl
+  pop ix
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call f24sub
+  
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+
+; addtoVec2(&a->body2->velocity, scaledVec2(a->body2->invMass, P));
+
+  ld hl,PreStep_b2invI
+  ld de,scaledVec2_s
+  ld bc,3
+  ldir
+
+  ld de,scaledVec2_a
+  ld hl,PreStep_P
+  ld bc,Vec2
+  ldir
+  
+  call scaledVec2
+  
+  ld hl,scaledVec2_res
+  ld de,subfromVec2_other
+  ld bc,Vec2
+  ldir
+  
+  ld l,(ix+Arbiter_body2)
+  ld h,(ix+Arbiter_body2+1)
+  ld de,Body_velocity
+  add hl,de
+  
+  push ix
+
+  push hl
+  pop ix  ; ix vec to be subtracted from
+  
+  call addtoVec2
+
+  pop ix  
+
+;  a->body2->angularVelocity += a->body2->invI * Crossvv(r2, P);
+
+  ld de,Crossvv_a
+  ld hl,PreStep_r2
+  ld bc,Vec2
+  
+  ld de,Crossvv_b
+  ld hl,PreStep_P
+  ld bc,Vec2
+
+  call Crossvv
+
+  ld ix,Crossvv_res
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,PreStep_b2invI
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+
+  call f24mul  
+  
+  push hl
+  pop de
+  ld c,a
+
+  push ix  
+  ld l,(ix+Arbiter_body2)
+  ld h,(ix+Arbiter_body2+1)
+  add hl,Body_angularVelocity
+
+  push hl
+  pop ix
+
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  call f24add
+  
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix
+  
+  ; end of loop
+  add iy,Contact
+  pop bc
+  djnz PreStep_loop
+
+PreStep_break:
+
+  pop iy
+  pop ix
+
+  ret
+
+; --------------------------------------------------------------  
+;  void ApplyImpulse(struct Arbiter *a)
+; ix = arbiter a
+; --------------------------------------------------------------  
+
+ApplyImpulse_b1: ds 2
+ApplyImpulse_b2: ds 2
+ApplyImpulse_dv: ds Vec2
+ApplyImpulse_vn: ds 3
+ApplyImpulse_dPn: ds 3
+ApplyImpulse:
+  push ix
+  pop hl
+  ld de,ArbiterKey_body1
+  add hl,de
+  ld (ApplyImpulse_b1),hl
+
+  push ix
+  pop hl
+  ld de,ArbiterKey_body2
+  add hl,de
+  ld (ApplyImpulse_b2),hl
+
+  ld a,(ix+Arbiter_numContacts)
+  ld b,a
+
+ApplyImpulse_loop:
+
+  push ix
+  pop iy
+  ld de,Arbiter_contacts
+  add iy,de  ; c
+
+;		c->r1 = diffVec2(c->position, b1->position);
+
+  push iy
+  pop hl
+  ld de,Contact_position
+  add hl,de
+  ld de,diffVec2_a
+  ld bc,Vec2
+  ldir
+  
+  ld hl,(ApplyImpulse_b1)
+  ld de,Body_position
+  add hl,de
+  ld de,diffVec2_b
+  ld bc,Vec2
+  ldir
+  
+  call diffVec2
+  
+  push iy
+  ld de,Contact_r1
+  add iy,de
+  push iy
+  pop de
+  ld hl,diffVec2_res
+  ld bc,Vec2
+  ldir
+  pop iy
+
+;		c->r2 = diffVec2(c->position, b2->position);
+  
+  ld hl,(ApplyImpulse_b2)
+  ld de,Body_position
+  add hl,de
+  ld de,diffVec2_b
+  ld bc,Vec2
+  ldir
+  
+  call diffVec2
+  
+  push iy
+  ld de,Contact_r2
+  add iy,de
+  push iy
+  pop de
+  ld hl,diffVec2_res
+  ld bc,Vec2
+  ldir
+  pop iy
+  
+; sumVec2(b2->velocity, Crosssv(b2->angularVelocity, c->r2))
+
+  ld hl,(ApplyImpulse_b2)
+  ld de,Body_angularVelocity
+  add hl,de
+  ld de,Crosssv_s
+  ld bc,3
+  ldir
+
+  ld de,Crosssv_a
+  push iy
+  pop hl
+  ld de,Contact_r2
+  add hl,de
+  ld bc,Vec2
+  ldir
+
+  call Crosssv  
+  
+  ld hl,(ApplyImpulse_b2)
+  ld de,Body_angularVelocity
+  add hl,de  
+  ld de,sumVec2_a
+  ld bc,Vec2
+  ldir
+  
+  ld hl,Crosssv_res
+  ld de,sumVec2_b
+  ld bc,Vec2
+  call sumVec2
+  
+  ld de,diffVec2_a
+  ld hl,sumVec2_res
+  ld bc,Vec2
+  ldir
+  
+ ; sumVec2(b1->velocity, Crosssv(b1->angularVelocity, c->r1)));
+ 
+  ld hl,(ApplyImpulse_b1)
+  ld de,Body_angularVelocity
+  add hl,de
+  ld de,Crosssv_s
+  ld bc,3
+  ldir
+
+  ld de,Crosssv_a
+  push iy
+  pop hl
+  ld de,Contact_r1
+  add hl,de
+  ld bc,Vec2
+  ldir
+
+  call Crosssv  
+  
+  ld hl,(ApplyImpulse_b1)
+  ld de,Body_velocity
+  add hl,de  
+  ld de,sumVec2_a
+  ld bc,Vec2
+  ldir
+  
+  ld hl,Crosssv_res
+  ld de,sumVec2_b
+  ld bc,Vec2
+  call sumVec2
+  
+  ld de,diffVec2_b
+  ld hl,sumVec2_res
+  ld bc,Vec2
+  ldir
+    
+  call diffVec2 
+
+  ld de,ApplyImpulse_dv
+  ld hl,diffVec2_res
+  ld bc,Vec2
+  ldir  
+  
+  ;		float vn = Dot(dv, c->normal);
+
+  ld de,Dot_a
+  ld hl,ApplyImpulse_dv
+  ld bc,Vec2
+  ldir
+  
+  ; ld hl,iy+Contact_normal
+  ld de,Contact_normal
+  push iy
+  pop hl
+  add hl,de
+  ld de,Dot_b
+  ld bc,Vec2
+  ldir
+
+  ld de,ApplyImpulse_vn
+  ld hl,Dot_res
+  ld bc,3
+  ldir
+
+;		float dPn = c->massNormal * (-vn + c->bias);
+
+  push ix
+  ld ix,ApplyImpulse_vn
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+1)
+  pop ix
+  
+  call f24neg
+  
+  ld c,(iy+Contact_bias)
+  ld d,(iy+Contact_bias+1)
+  ld e,(iy+Contact_bias+2)
+
+  call f24add
+    
+  ld c,(iy+Contact_massNormal+0)
+  ld d,(iy+Contact_massNormal+1)
+  ld e,(iy+Contact_massNormal+2)
+
+  call f24mul
+
+  push ix
+  ld ix,ApplyImpulse_dPn
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix  
+
+  ld a,(iy+Contact_Pn) ; Pn0
+  ld h,(iy+Contact_Pn+1)
+  ld l,(iy+Contact_Pn+2)
+
+  push af
+  push hl
+
+  ld ix,ApplyImpulse_dPn
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24add
+
+  ld ix,Max_a
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld (Max_b),0
+  ld (Max_b+1),0
+  ld (Max_b+2),0
+  
+  call Max
+  
+  ld a,(Max_res+0)
+  ld h,(Max_res+1)
+  ld l,(Max_res+2)
+  
+  ld (iy+Contact_Pn),a
+  ld (iy+Contact_Pn+1),h
+  ld (iy+Contact_Pn+2),l
+
+  pop de
+  pop bc
+  ld c,a
+      
+  call f24diff
+
+  push ix
+  ld ix,ApplyImpulse_dPn
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+  pop ix  
+      
+  ; end of loop
+  
+  add iy,Contact
+  djnz ApplyImpulse_loop
+
+  ret
+  
 ; ----------------------------------------------------------------
 ; void addtoVec2(struct Vec2 *vec, struct Vec2 other)
 ; vec is passed in by ix, other by value
@@ -710,6 +2391,45 @@ Dot:
 
   ret
 
+; float Min(float a, float b)
+
+Min_a: ds 3
+Min_b: ds 3
+Min_res: ds 3
+Min:
+
+  push ix
+
+  ld ix,Min_a
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+
+  ld ix,Min_b
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24cmp
+  
+  jr c Min_skip ; a < b
+
+  ld (ix+0),c
+  ld (ix+1),d
+  ld (ix+2),e
+  
+  pop ix
+  ret
+  
+Min_skip:
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  pop ix
+
+  ret  
+  
 ; ------------------------------------------------------------------
 ; struct Vec2 Absv(struct Vec2 a)
 ; ------------------------------------------------------------------
@@ -765,6 +2485,95 @@ AbsM:
   
   ret
   
+; struct Vec2 Crossvs(struct Vec2 a, float s)
+Crossvs_a: ds Vec2
+Crossvs_s: ds 3
+Crossvs_res: ds Vec2
+Crossvs:  
+
+  push ix
+  ld ix,Crossvs_s
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  ld ix,Crossvs_a
+  ld c,(ix+3)
+  ld d,(ix+4)
+  ld e,(ix+5)
+  
+  call f24mul
+
+  ld ix,Crossvs_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld ix,Crossvs_s
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  ld ix,Crossvs_a
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24mul
+  call f24neg
+
+  ld ix,Crossvs_res
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+
+  pop ix  
+  ret
+
+; struct Vec2 Crosssv(float s, struct Vec2 a)
+Crosssv_s: ds 3
+Crosssv_a: ds Vec2
+Crosssv_res: ds Vec2
+Crosssv: 
+  push ix 
+  ld ix,Crosssv_s
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+  
+  ld ix,Crosssv_a
+  ld c,(ix+3)
+  ld d,(ix+4)
+  ld e,(ix+5)
+  
+  call f24mul
+  call f24neg
+
+  ld ix,Crosssv_res
+  ld (ix+0),a
+  ld (ix+1),h
+  ld (ix+2),l
+
+  ld ix,Crosssv_s
+  ld a,(ix+0)
+  ld h,(ix+1)
+  ld l,(ix+2)
+    
+  ld ix,Crosssv_a
+  ld c,(ix+0)
+  ld d,(ix+1)
+  ld e,(ix+2)
+  
+  call f24mul
+
+  ld ix,Crosssv_res
+  ld (ix+3),a
+  ld (ix+4),h
+  ld (ix+5),l
+
+  pop ix
+  ret
+
 ; ----------------------------------------------------------------
 ; float Crossvv(struct Vec2 a, struct Vec2 b)
 ; return a.x * b.y - a.y * b.x;
@@ -1614,7 +3423,7 @@ ComputeIncidentEdge_endif:
 
 ; -----------------------------------------------------------------------------
 ; int Collide(struct Contact* contacts, struct Body* bodyA, struct Body* bodyB)
-; hl=contact, ix=bodyA, iy=bodyB
+; hl=contact, ix=bodyA, iy=bodyB. Return in a
 ;-----------------------------------------------------------------------------
 
 Collide_hA: ds Vec2

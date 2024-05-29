@@ -66,6 +66,77 @@ go: call ClipSegmentToLine_test ;   13: 02 / 449000 000000 00 00 04 01/ BDFF80 0
 
     ret
 
+; insertArbiter_test
+
+IA_ArbiterKey: 
+dw 12000,48000
+
+IA_Arbiter: 
+ds 106,9
+
+insertArbiter_test:
+  ld de,insertArbiter_key
+  ld hl,IA_ArbiterKey
+  ld bc,4
+  ldir
+  
+  ld de,insertArbiter_value
+  ld hl,IA_Arbiter
+  ld bc,106
+  ldir
+
+  call insertArbiter
+  
+  ld a,(g_numArbiters)
+  call writeByte
+  
+  ld de,findArbiter_key
+  ld hl,IA_ArbiterKey
+  ld bc,4
+  ldir
+
+  call findArbiter
+
+  push hl
+
+  ld a,h
+  call writeByte
+  
+  pop hl
+  
+  ld a,l
+  call writeByte
+
+  ld ix,findArbiter_key
+  ld (ix+0),12
+  ld (ix+1),23
+  ld (ix+2),44
+  ld (ix+3),98
+  
+  call findArbiter  ; should be 0
+
+  push hl
+
+  ld a,h
+  call writeByte
+  
+  pop hl
+  
+  ld a,l
+  call writeByte
+
+  ld de,eraseArbiter_key
+  ld hl,IA_ArbiterKey
+  ld bc,4
+  ldir
+  
+  call eraseArbiter
+
+  ld a,(g_numArbiters)
+  call writeByte
+
+  ret
+  
 ; ----------------------------------------------
 ; ComputeIncidentEdge_test
 ; ----------------------------------------------

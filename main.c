@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include "b2d_lite.h"
 
+extern int g_numArbiters;
+
 int main()
 {
     printf("start\n");
@@ -57,7 +59,7 @@ int main()
     for (int it=0; it<100; it++)
     {
         Step(timeStep);
-        printf("%f %f\n", crate.position.x, crate.position.y);
+        printf("%f %f %d\n", crate.position.x, crate.position.y, g_numArbiters);
     }
 
     debug=1;

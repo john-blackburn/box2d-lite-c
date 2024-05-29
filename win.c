@@ -11,6 +11,8 @@
 
 #define ID_TIMER   1
 
+extern int g_numArbiters;
+
 int width = 256*3;      // width of the window in px
 int height = 192*3;     // height of the window in px
 float zoom = 10.0f;     // if pan_y=0, coord system goes from y=[-zoom,+zoom] (metres) and corresponding for x given aspect ratio
@@ -174,6 +176,8 @@ LRESULT CALLBACK WndProc (HWND hwnd, UINT iMsg, WPARAM wParam, LPARAM lParam)
             DrawBody(&crates[i]);
         
         SwapBuffers(hDC);
+        
+//        printf("ggg%d\n",g_numArbiters);
 
         return 0;
     }
